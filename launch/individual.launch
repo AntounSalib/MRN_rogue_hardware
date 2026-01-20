@@ -1,0 +1,28 @@
+<launch>
+    <!-- Arguments from launch_all -->
+    <arg name="robot_name"/>
+    <arg name="robot_ip"/>   
+    
+    <!-- Create Turtlebot machine (i.e. connect to robot)-->
+    <machine 
+        name="$(arg robot_name)" 
+        address="$(arg robot_ip)" 
+        user="ubuntu" 
+        password="turtlebot" 
+        timeout="10" 
+        env-loader="/home/ubuntu/remote_env_loader.sh"/>
+
+    <!-- Bring up robot (i.e. connect to robot and launch its bringup file)-->
+    <node machine="$(arg robot_name)" pkg="rosserial_python" type="serial_node.py" name="turtlebot3_core" output="screen">
+        <param name="port" value="/dev/ttyACM0"/>
+        <param name="baud" value="115200"/>
+        <param name="tf_prefix" value="$(arg robot_name)"/>
+    </node>
+
+    <node machine="$(arg robot_name)" pkg="turtlebot3_bringup" type="turtlebot3_diagnostics" name="turtlebot3_diagnostics" output="screen"/>
+    
+    <!-- Launch controller node/script -->
+    <node pkg="MRN_rogue_hardware" type="turtlebot.py" name="turtlebot" output="screen" 
+        args="-robot_name $(arg robot_name) -robot_ip $(arg robot_ip)"/>
+
+</launch>

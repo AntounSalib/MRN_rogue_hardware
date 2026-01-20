@@ -1,0 +1,80 @@
+<launch>
+  <!-- choose robots -->
+  <arg name="tb1" default="false"/>
+  <arg name="tb2" default="false"/>
+  <arg name="tb3" default="false"/>
+  <arg name="tb4" default="false"/>
+  <arg name="tb5" default="false"/>
+  <arg name="tb6" default="false"/>
+  <arg name="tb7" default="false"/>
+  <arg name="tb8" default="false"/>
+  <arg name="tb9" default="false"/>
+
+  <!-- start vicon once -->
+  <include file="$(find vicon_bridge)/launch/vicon.launch" />
+
+  <!-- start selected controllers -->
+  <group if="$(arg tb1)" ns="tb1">
+    <include file="$(find MRN_rogue_hardware)/launch/individual.launch">
+      <arg name="robot_name" value="tb1"/>
+      <arg name="robot_ip" value="192.168.121.191"/>
+    </include>
+  </group>
+
+  <group if="$(arg tb2)" ns="tb2">
+    <include file="$(find MRN_rogue_hardware)/launch/individual.launch">
+      <arg name="robot_name" value="tb2"/>
+      <arg name="robot_ip" value="192.168.121.192"/>
+    </include>
+  </group>
+
+  <group if="$(arg tb3)" ns="tb3">
+    <include file="$(find MRN_rogue_hardware)/launch/individual.launch">
+      <arg name="robot_name" value="tb3"/>
+      <arg name="robot_ip" value="192.168.121.193"/>
+    </include>
+  </group>
+
+  <group if="$(arg tb4)" ns="tb4">
+    <include file="$(find MRN_rogue_hardware)/launch/individual.launch">
+      <arg name="robot_name" value="tb4"/>
+      <arg name="robot_ip" value="192.168.121.194"/>
+    </include>
+  </group>
+
+  <group if="$(arg tb5)" ns="tb5">
+    <include file="$(find MRN_rogue_hardware)/launch/individual.launch">
+      <arg name="robot_name" value="tb1"/>
+      <arg name="robot_ip" value="192.168.121.195"/>
+    </include>
+  </group>
+
+  <group if="$(arg tb6)" ns="tb6">
+    <include file="$(find MRN_rogue_hardware)/launch/individual.launch">
+      <arg name="robot_name" value="tb6"/>
+      <arg name="robot_ip" value="192.168.121.196"/>
+    </include>
+  </group>
+
+  <group if="$(arg tb7)" ns="tb7">
+    <include file="$(find MRN_rogue_hardware)/launch/individual.launch">
+      <arg name="robot_name" value="tb7"/>
+      <arg name="robot_ip" value="192.168.121.197"/>
+    </include>
+  </group>
+
+  <group if="$(arg tb8)" ns="tb8">
+    <include file="$(find MRN_rogue_hardware)/launch/individual.launch">
+      <arg name="robot_name" value="tb8"/>
+      <arg name="robot_ip" value="192.168.121.198"/>
+    </include>
+  </group>
+
+  <group if="$(arg tb9)" ns="tb9">
+    <include file="$(find MRN_rogue_hardware)/launch/individual.launch">
+      <arg name="robot_name" value="tb9" />
+      <arg name="robot_ip" value="192.168.121.199"/>
+    </include>
+  </group>
+
+</launch>
