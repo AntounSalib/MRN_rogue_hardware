@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 
+import numpy as np
 import rospy
 import json
 import time
@@ -7,7 +8,9 @@ import math
 import copy
 from geometry_msgs.msg import Twist, TransformStamped
 from std_msgs.msg import String
+from nod_controller import NodController
 
+from tf.transformations import euler_from_quaternion
 from neighbors import sensed_neighbors
 from constants import ROBOT_NAMES
 
@@ -19,6 +22,7 @@ class Turtlebot:
         # State variables
         self.prev_time = None
         self.prev_info = None
+        self.commanded_velocity = 0.0
         self.info = {
             "name": self.robot_name,
             "position": [0.0, 0.0],
@@ -47,6 +51,9 @@ class Turtlebot:
             if other_robot != self.robot_name:
                 topic_name = f'/{other_robot}/info'
                 rospy.Subscriber(topic_name, String, self.neighbor_callback)
+
+        # Initialize NodController
+        self.nod_controller = NodController(self.robot_name, time.time())
 
         rospy.on_shutdown(self.tb_stop)
 
@@ -78,7 +85,7 @@ class Turtlebot:
                 vx = (x - prev_pos[0]) / dt
                 vy = (y - prev_pos[1]) / dt
                 # low-pass filter
-                alpha = 0.5  # smoothing factor
+                alpha = 1  # smoothing factor
                 self.info["velocity"][0] = alpha * vx + (1 - alpha) * self.prev_info["velocity"][0]
                 self.info["velocity"][1] = alpha * vy + (1 - alpha) * self.prev_info["velocity"][1]
 
@@ -87,15 +94,18 @@ class Turtlebot:
         self.prev_time = current_time
         self.info["position"] = [x, y]
 
-        # --- Extract heading (yaw) from quaternion ---
-        q = data.transform.rotation
-        qx, qy, qz, qw = q.x, q.y, q.z, q.w
+        # Use odometry data (quaternion orientation) and convert to euler angles to get robot's heading
+        orient_quat = data.transform.rotation
+        orient = [orient_quat.x, orient_quat.y, orient_quat.z, orient_quat.w]
+        (roll, pitch, yaw) = euler_from_quaternion(orient)
 
-        siny_cosp = 2.0 * (qw * qz + qx * qy)
-        cosy_cosp = 1.0 - 2.0 * (qy * qy + qz * qz)
-        yaw = math.atan2(siny_cosp, cosy_cosp)  # in radians
+        # Update pos and heading
+        self.pos = np.array([x,y])
+        self.heading = yaw
 
-        self.info["heading"] = yaw
+        # # computing linear velocities based on commanded velocity and heading
+        # self.info["velocity"][0] = self.commanded_velocity * math.cos(self.heading)
+        # self.info["velocity"][1] = self.commanded_velocity * math.sin(self.heading)
 
         # --- Publish info as JSON string ---
         info_msg = String(data=json.dumps(self.info))
@@ -106,6 +116,7 @@ class Turtlebot:
         vel_msg.linear.x = lin_vel
         vel_msg.angular.z = ang_vel
         self.vel_pub.publish(vel_msg)
+        self.commanded_velocity = lin_vel
         # print(f'published: {vel_msg}')
         
     def neighbor_callback(self, msg):
@@ -124,10 +135,24 @@ class Turtlebot:
         for hardware safety it is advisable to have a low-level cbf screen the autonomy controller
         TODO get other robot's position, speed, do control, and call move.
         """
+        z = self.nod_controller.update_opinion(self.info, self.neighbors, time.time())
+        # z = max(0, z/2)
 
-        self.move(-0.05, 0)
-        neighbor_set = sensed_neighbors(self.info, self.neighbors)
-        print(f"{self.robot_name} sensed neighbors: {neighbor_set}")
+        # print(f"{self.info['name']} position: {self.info['position']}, velocity: {self.info['velocity']}")
+        if z <= -0.1:
+            z = 0.02
+        elif abs(z) < 0.1:
+            z = 0.1
+        z = max(0, z/2)
+
+        ego_pos = np.array(self.info['position'])
+
+        if abs(ego_pos[0]) > 2.8 or abs(ego_pos[1]) > 2.8:
+            self.move(0.0)
+        else:
+            self.move(z, 0)
+        print(f"{self.robot_name} opinion: {z:.3f}")
+        
 
         self.rate.sleep()
 

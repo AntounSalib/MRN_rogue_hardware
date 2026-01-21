@@ -1,4 +1,5 @@
 <launch>
+  <env name="ROSLAUNCH_SSH_UNKNOWN" value="1" />
   <!-- choose robots -->
   <arg name="tb1" default="false"/>
   <arg name="tb2" default="false"/>
@@ -44,7 +45,7 @@
 
   <group if="$(arg tb5)" ns="tb5">
     <include file="$(find MRN_rogue_hardware)/launch/individual.launch">
-      <arg name="robot_name" value="tb1"/>
+      <arg name="robot_name" value="tb5"/>
       <arg name="robot_ip" value="192.168.121.195"/>
     </include>
   </group>
