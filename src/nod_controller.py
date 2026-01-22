@@ -4,7 +4,7 @@ from typing import List, Tuple
 from neighbors import conflicting_neighbors, tca_and_rmin
 from scipy.special import expit
 from scipy.integrate import solve_ivp
-from constants import EPS, T_COLL, KAPPA_TCA, KAPPA_DMIN, DMIN_CLEAR, PHI_TILT, TEMP_SM, U_0, K_U, OPINION_DECAY, ATTENTION_DECAY, TAU_Z, TIMING_TAU_U_RELAX, K_U_S, TAU_Z_RELAX, ITERATIONS_OD
+from constants import NodConfig, EPS, T_COLL, KAPPA_TCA, KAPPA_DMIN, DMIN_CLEAR, PHI_TILT, TEMP_SM, U_0, K_U, OPINION_DECAY, ATTENTION_DECAY, TAU_Z, TIMING_TAU_U_RELAX, K_U_S, TAU_Z_RELAX, ITERATIONS_OD
 
 class NodController:
     def __init__(self, robot_name: str, time: float):
@@ -32,31 +32,12 @@ class NodController:
         # for _ in range(n_fast):
         self.z, self.u = self._integrate_fast(
         self.z, self.u, a_sum, dt)
-        
-        # for _ in range(ITERATIONS_OD):
-        # # for i in range(cfg.timing.iterations_OD):
-        #     k1_z, k1_u = self._nod_update(z, u, a_sum)
-        #     # print(f"{k1_z=}, {k1_u=}")
-        #     k2_z, k2_u = self._nod_update(z + 0.5 * dt * k1_z, u + 0.5 * dt * k1_u,a_sum)
-        #     # print(f"{k2_z=}, {k2_u=}")
-        #     k3_z, k3_u = self._nod_update(z + 0.5 * dt * k2_z, u + 0.5 * dt * k2_u, a_sum)
-        #     # print(f"{k3_z=}, {k3_u=}")
-        #     k4_z, k4_u = self._nod_update(z + dt * k3_z, u + dt * k3_u, a_sum)
-        #     # print(f"{k4_z=}, {k4_u=}")
 
-        #     # RK4 update
-        #     z += (dt / 6) * (k1_z + 2 * k2_z + 2 * k3_z + k4_z)
-        #     u += (dt / 6) * (k1_u + 2 * k2_u + 2 * k3_u + k4_u)
-
-        #     # Check for convergence
-        #     if abs(z - zprev) < 1e-4 and abs(u-uprev) < 1e-4:
-        #         break
-        #     zprev = z
-        #     uprev = u
-    
-        # print(f"{self.robot_name}, Pis: {Pis}, a_sum: {a_sum}, z: {self.z:.3f}, u: {self.u:.3f}, dt: {dt:.3f}")
-       
-        return self.z
+        # compute target velocity
+        v0 = NodConfig.kin.V_NOMINAL
+        v_tar = np.clip((1.0 + np.tanh(NodConfig.kin.KAPPA_Z* self.z)) * v0, 0.0, NodConfig.kin.V_MAX)
+      
+        return v_tar
 
         
 

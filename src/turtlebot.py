@@ -135,25 +135,14 @@ class Turtlebot:
         for hardware safety it is advisable to have a low-level cbf screen the autonomy controller
         TODO get other robot's position, speed, do control, and call move.
         """
-        z = self.nod_controller.update_opinion(self.info, self.neighbors, time.time())
-        # z = max(0, z/2)
-
-        # print(f"{self.info['name']} position: {self.info['position']}, velocity: {self.info['velocity']}")
-        if z <= -0.1:
-            z = 0.02
-        elif abs(z) < 0.1:
-            z = 0.1
-        z = max(0, z/2)
-
+        v_tar = self.nod_controller.update_opinion(self.info, self.neighbors, time.time())
         ego_pos = np.array(self.info['position'])
-
-        if abs(ego_pos[0]) > 2.8 or abs(ego_pos[1]) > 2.8:
+        if abs(ego_pos[0]) > 2.5 or abs(ego_pos[1]) > 2.5:
+            print(f"{self.robot_name} reached goal at {ego_pos}, stopping.")
             self.move(0.0)
         else:
-            self.move(z, 0)
-        print(f"{self.robot_name} opinion: {z:.3f}")
-        
-
+            self.move(v_tar, 0)
+            
         self.rate.sleep()
 
 if __name__ == '__main__':

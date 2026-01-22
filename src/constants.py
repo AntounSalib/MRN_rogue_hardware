@@ -1,6 +1,7 @@
+import numpy as np
+
 ROBOT_NAMES = ("tb1", "tb2", "tb3", "tb4", "tb5", "tb6", "tb7", "tb8", "tb9")
 
-SENSING_RANGE = 10
 EPS = 1e-5
 D_SAFE = .35
 
@@ -21,3 +22,14 @@ TIMING_TAU_U_RELAX = TAU_Z
 K_U_S = 0
 TAU_Z_RELAX = TAU_Z
 ITERATIONS_OD = 50
+
+class NodConfig:
+    class neighbors:
+        SENSING_RANGE = 10
+        R_PRED = 1.5*np.sqrt(2)*D_SAFE
+
+
+    class kin:
+        V_NOMINAL = 0.1
+        KAPPA_Z = 1.0
+        V_MAX = 1.0

@@ -1,5 +1,5 @@
 from typing import Set, Tuple
-from constants import SENSING_RANGE, EPS
+from constants import NodConfig, EPS
 import numpy as np
 
 def sensed_neighbors(ego_info: dict, neighbors_dict: dict) -> Set[str]:
@@ -18,14 +18,34 @@ def sensed_neighbors(ego_info: dict, neighbors_dict: dict) -> Set[str]:
     for name, info in neighbors_dict.items():
         neighbor_pos = info['position']
         distance = ((ego_pos[0] - neighbor_pos[0]) ** 2 + (ego_pos[1] - neighbor_pos[1]) ** 2) ** 0.5
-        if distance <= SENSING_RANGE:
+        if distance <= NodConfig.neighbors.SENSING_RANGE:
             sensed.add(name)
 
     return sensed
 
-#todo: figure out which conflicting neighbors script to use
 def conflicting_neighbors(ego_info: dict, neighbors_dict: dict) -> Set[str]:
-    return sensed_neighbors(ego_info, neighbors_dict)
+     
+    conflicting = set()
+    ego_pos = ego_info['position']
+    for name, neighbor_info in neighbors_dict.items():
+        neighbor_pos = neighbor_info['position']
+        distance = ((ego_pos[0] - neighbor_pos[0]) ** 2 + (ego_pos[1] - neighbor_pos[1]) ** 2) ** 0.5
+        if distance > NodConfig.neighbors.SENSING_RANGE:
+            continue
+
+        r0 = np.array(neighbor_pos) - np.array(ego_pos)  # relative position
+        w = np.array(np.array(neighbor_info['velocity']-ego_info['velocity']))    # relative velocity
+        
+        a = float(np.dot(w, w))
+        b = 2*float(np.dot(r0, w))
+        c = float(np.dot(r0, r0)) - 1.*(NodConfig.neighbors.R_PRED)**2
+        kept = (b**2 - 4*a*c >= 0)
+
+        if kept: 
+            conflicting.add(name)
+     
+
+    return conflicting
 
 def tca_and_rmin(ego_info: dict, neighbor_info: dict) -> Tuple[float, float]:
     """
