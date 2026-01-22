@@ -12,7 +12,7 @@ from nod_controller import NodController
 
 from tf.transformations import euler_from_quaternion
 from neighbors import sensed_neighbors
-from constants import ROBOT_NAMES
+from constants import ROBOT_NAMES, EPS
 
 class Turtlebot:
     def __init__(self, robot_name, robot_ip):
@@ -21,7 +21,6 @@ class Turtlebot:
 
         # State variables
         self.prev_time = None
-        self.prev_info = None
         self.commanded_velocity = 0.0
         self.info = {
             "name": self.robot_name,
@@ -76,21 +75,22 @@ class Turtlebot:
         y = data.transform.translation.y
         current_time = data.header.stamp.to_sec()  # ROS time
 
+        prev_info = copy.deepcopy(self.info)
+
         # --- Compute 2D velocity ---
-        if self.info is not None and self.prev_time is not None and self.prev_info is not None:
+        if prev_info is not None and self.prev_time is not None:
             dt = current_time - self.prev_time
-            prev_pos = self.prev_info["position"]
+            prev_pos = self.info["position"]
 
             if dt > 0:
                 vx = (x - prev_pos[0]) / dt
                 vy = (y - prev_pos[1]) / dt
                 # low-pass filter
-                alpha = 1  # smoothing factor
-                self.info["velocity"][0] = alpha * vx + (1 - alpha) * self.prev_info["velocity"][0]
-                self.info["velocity"][1] = alpha * vy + (1 - alpha) * self.prev_info["velocity"][1]
+                alpha = .3  # smoothing factor
+                self.info["velocity"][0] = alpha * vx + (1 - alpha) * prev_info["velocity"][0]
+                self.info["velocity"][1] = alpha * vy + (1 - alpha) * prev_info["velocity"][1]
 
         # --- Store previous info as a deep copy to avoid pointer issues ---
-        self.prev_info = copy.deepcopy(self.info)
         self.prev_time = current_time
         self.info["position"] = [x, y]
 
@@ -98,18 +98,18 @@ class Turtlebot:
         orient_quat = data.transform.rotation
         orient = [orient_quat.x, orient_quat.y, orient_quat.z, orient_quat.w]
         (roll, pitch, yaw) = euler_from_quaternion(orient)
+        self.info["heading"] = yaw
 
-        # Update pos and heading
-        self.pos = np.array([x,y])
-        self.heading = yaw
-
-        # # computing linear velocities based on commanded velocity and heading
-        # self.info["velocity"][0] = self.commanded_velocity * math.cos(self.heading)
-        # self.info["velocity"][1] = self.commanded_velocity * math.sin(self.heading)
+        # computing linear velocities based on commanded velocity and heading
+        vel_mag = math.hypot(self.info["velocity"][0], self.info["velocity"][1]) + EPS
+        self.info["velocity"][0] = vel_mag * math.cos(self.info["heading"])
+        self.info["velocity"][1] = vel_mag * math.sin(self.info["heading"])
 
         # --- Publish info as JSON string ---
         info_msg = String(data=json.dumps(self.info))
         self.info_pub.publish(info_msg)
+
+        # print(f"{self.robot_name} pos: {self.info['position']}, vel: {self.info['velocity']}, heading: {self.info['heading']:.2f}")
 
     def move(self, lin_vel, ang_vel):
         vel_msg = Twist()
@@ -137,12 +137,12 @@ class Turtlebot:
         """
         v_tar = self.nod_controller.update_opinion(self.info, self.neighbors, time.time())
         ego_pos = np.array(self.info['position'])
-        if abs(ego_pos[0]) > 2.5 or abs(ego_pos[1]) > 2.5:
-            print(f"{self.robot_name} reached goal at {ego_pos}, stopping.")
-            self.move(0.0)
+        if abs(ego_pos[0]) > 2.9 or abs(ego_pos[1]) > 2.9:
+            # print(f"{self.robot_name} reached goal at {ego_pos}, stopping.")
+            self.move(0, 0)
         else:
             self.move(v_tar, 0)
-            
+
         self.rate.sleep()
 
 if __name__ == '__main__':

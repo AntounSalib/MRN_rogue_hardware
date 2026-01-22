@@ -3,7 +3,7 @@ import numpy as np
 ROBOT_NAMES = ("tb1", "tb2", "tb3", "tb4", "tb5", "tb6", "tb7", "tb8", "tb9")
 
 EPS = 1e-5
-D_SAFE = .35
+D_SAFE = 0.35
 
 # Nod parameters
 T_COLL = 4.
@@ -26,10 +26,12 @@ ITERATIONS_OD = 50
 class NodConfig:
     class neighbors:
         SENSING_RANGE = 10
-        R_PRED = 1.5*np.sqrt(2)*D_SAFE
+        R_PRED = 1.2*np.sqrt(2)*D_SAFE
+        R_OCC = D_SAFE
 
 
     class kin:
-        V_NOMINAL = 0.1
+        V_NOMINAL = 0.3
         KAPPA_Z = 1.0
         V_MAX = 1.0
+    

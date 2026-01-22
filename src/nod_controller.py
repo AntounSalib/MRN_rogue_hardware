@@ -19,6 +19,7 @@ class NodController:
 
     def update_opinion(self, ego_info: dict, neighbors_dict: dict, current_time: float):
         c_neighbors = conflicting_neighbors(ego_info, neighbors_dict)
+        # print(f"robot: {self.robot_name}, conflicting neighbors: {c_neighbors}")
 
         Pis, Gis = self._compute_pressurs_and_gates(ego_info, neighbors_dict, c_neighbors)
 
