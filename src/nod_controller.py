@@ -2,7 +2,7 @@ import math
 from collections import defaultdict
 import numpy as np
 from typing import List, Tuple
-from neighbors import conflicting_neighbors, tca_and_rmin, arrival_times_to_disk, sensed_neighbors
+from neighbors import conflicting_neighbors, tca_and_rmin, arrival_times_to_disk, sensed_neighbors, solve_ray_intersection
 from scipy.special import expit
 from scipy.integrate import solve_ivp
 from constants import NodConfig, EPS, T_COLL, KAPPA_TCA, KAPPA_DMIN, DMIN_CLEAR, PHI_TILT, TEMP_SM, U_0, K_U, OPINION_DECAY, ATTENTION_DECAY, TAU_Z, TIMING_TAU_U_RELAX, K_U_S, TAU_Z_RELAX, ITERATIONS_OD, D_SAFE
@@ -33,10 +33,7 @@ class NodController:
         if NodConfig.cooperation.COOPERATION_LAYER_ON:
             self._update_cooperation(ego_info, neighbors_dict, sens_neighbors)
 
-        conf_neighbors = conflicting_neighbors(ego_info, neighbors_dict)
-
-        Pis, Gis = self._compute_pressure_and_gates(ego_info, neighbors_dict, conf_neighbors)
-        Uis = self._compute_pairwise_attention(ego_info, neighbors_dict, conf_neighbors)
+        Pis, Gis, Uis = self._compute_pressure_and_gates(ego_info, neighbors_dict, sens_neighbors)
 
         a_sum = self._aggregate(Pis, Gis, Uis)
 
@@ -54,9 +51,9 @@ class NodController:
         v_tar = np.clip((1.0 + np.tanh(NodConfig.kin.KAPPA_Z* self.z)) * v0, 0.0, NodConfig.kin.V_MAX)
 
         # if a_sum is None:
-        #     print(f"robot: {self.robot_name}, Pis: {Pis}, Gis: {Gis}, Uis: {Uis}, z: {self.z:.3f}, u: {self.u:.3f}, v_tar: {v_tar:.3f}")
+        #     print(f"robot: {self.robot_name}, conf neighbors: {conf_neighbors}, Pis: {Pis}, Gis: {Gis}, Uis: {Uis}, z: {self.z:.3f}, u: {self.u:.3f}, v_tar: {v_tar:.3f}")
         # else:
-        #     print(f"robot: {self.robot_name}, Pis: {Pis}, Gis: {Gis}, Uis: {Uis}, a_sum: {a_sum:.3f}, z: {self.z:.3f}, u: {self.u:.3f}, v_tar: {v_tar:.3f}")
+        #     print(f"robot: {self.robot_name}, conf neighbors: {conf_neighbors}, Pis: {Pis}, Gis: {Gis}, Uis: {Uis}, a_sum: {a_sum:.3f}, z: {self.z:.3f}, u: {self.u:.3f}, v_tar: {v_tar:.3f}")
       
         return v_tar
     
@@ -67,8 +64,8 @@ class NodController:
             time_step = 0.1
 
             # relative vectors
-            vij_vec = neighbor_info['velocity'] - ego_info['velocity']
-            pij = neighbor_info['position'] - ego_info['position']
+            vij_vec = np.array(neighbor_info['velocity']) - np.array(ego_info['velocity'])
+            pij = np.array(neighbor_info['position']) - np.array(ego_info['position'])
             pij_norm = float(np.linalg.norm(pij))
             pij_norm = max(pij_norm, 1e-6)
             vij_vec_norm = float(np.linalg.norm(vij_vec))
@@ -86,8 +83,8 @@ class NodController:
             # neighbor velocity calculations 
             prev_vj = self.previous_vj[neighbor]
             vj = neighbor_info['velocity']
-            self.previous_vj = vj
-            delta_vj = vj - prev_vj
+            self.previous_vj[neighbor] = vj
+            delta_vj = np.linalg.norm(vj) - np.linalg.norm(prev_vj)
             
             
             latest_cooperation_score = self.pairwise_cooperation[neighbor]
@@ -110,7 +107,7 @@ class NodController:
             k3_u = _cooperation_u_rhs(u_prev + 0.5 * time_step * k2_u)
             k4_u = _cooperation_u_rhs(u_prev + time_step * k3_u)
             u = u_prev + (time_step / 6.0) * (k1_u + 2 * k2_u + 2 * k3_u + k4_u)
-            self.pairwise_cooperation_attention[neighbor]
+            self.pairwise_cooperation_attention[neighbor] = u
 
             def _cooperation_rhs(score: float) -> float:
                 # return beta_input
@@ -131,35 +128,32 @@ class NodController:
                 cooperation_score = next_cooperation
             self.pairwise_cooperation[neighbor] = cooperation_score
 
-
-    def _compute_pairwise_attention(self, ego_info: dict, neighbor_dict: dict, conflicting_neighbors: set) -> List[float]:
-        Uis = []
-        ego_pos = ego_info['position']
-
-        for neighbor in conflicting_neighbors:
-            # compute pairwise attention
-            neighbor_info = neighbor_dict[neighbor]
-            neighbor_pos = neighbor_info['position']
-
-            r0 = np.array(neighbor_pos) - np.array(ego_pos)  # relative position
-            w = np.array(neighbor_info['velocity'])-np.array(ego_info['velocity'])    # relative velocity
-            a = float(np.dot(w, w))
-            b = 2*float(np.dot(r0, w))
-            c = float(np.dot(r0, r0)) - 1.*(NodConfig.neighbors.R_PRED)**2
-            conflict_intensity = 2*expit(1*(b**2/(4*max(a,EPS)) - c))
-            Uis.append(self._update_pairwise_attention(neighbor, conflict_intensity))
-
-        return Uis
-
     def _compute_pressure_and_gates(self, ego_info: dict, neighbor_dict: dict, conflicting_neighbors: set):
         Pis = []
         Gis = []
+        Uis = []
+        infos = []
         for neighbor in conflicting_neighbors:
-            
             # get neighbor info
             neighbor_info = neighbor_dict[neighbor]
             t_star, d_min = tca_and_rmin(ego_info, neighbor_info)
             # print(f"robot: {self.robot_name}, neighbor: {neighbor}, ti: {ti:.3f}, tj: {tj:.3f}, delta_t: {delta_t:.3f}, t_star: {t_star:.3f}, d_min: {d_min:.3f}")
+            
+
+            # neighbor pruning
+            if not (solve_ray_intersection(ego_info, neighbor_info)):
+                continue
+            s, t = solve_ray_intersection(ego_info, neighbor_info)
+            if (s < 0.0 and abs(s) > NodConfig.neighbors.R_OCC):
+                continue
+            ti, tj, ti_cooperation= arrival_times_to_disk(ego_info, neighbor_info)
+            # print(f"robot: {ego_info['name']}, neighbor: {neighbor_info['name']}, ti: {ti}, tj: {tj}, ti_rogue: {ti_cooperation}, s: {s}, t: {t}")
+
+            if (ti is None or tj is None or ti_cooperation is None):
+                continue
+            if (ti > 100 or tj > 100):
+                continue
+       
             
             # compute pressure
             P_time = 2*float(expit(float(KAPPA_TCA) * (float(T_COLL) - t_star)))
@@ -167,22 +161,49 @@ class NodController:
             P = P_time * P_distance
 
             # compute gate
-            ti, tj, ti_cooperation = arrival_times_to_disk(ego_info, neighbor_info)
             if NodConfig.cooperation.COOPERATION_LAYER_ON and self.pairwise_cooperation[neighbor] < NodConfig.cooperation.COOPERATION_THRESHOLD:
                 delta_t = ti_cooperation - tj
+                # print(f"robot: {ego_info['name']}, neighbor: {neighbor_info['name']}, using cooperation delta_t: {delta_t}")
             else:
                 delta_t = ti - tj
             G = self._compute_gate(delta_t)
 
+            U = self._compute_pairwise_attention(ego_info, neighbor_info)
+
             Pis.append(P)
             Gis.append(G)
+            Uis.append(U)
+            info = {}
+            info['neighbor'] = neighbor
+            # info['time_to_closest_approach'] = t_star
+            # info['distance_at_closest_approach'] = d_min
+            info['s'] = s
+            info['t'] = t
+            info['ti'] = ti
+            info['tj'] = tj
+            info['delta_t'] = delta_t
+            info['P'] = P
+            info['G'] = G
+            info['U'] = U
+            infos.append(info)
 
-
-        return Pis, Gis
+        # print(f"robot: {self.robot_name}, neighbor infos: {infos}")
+        return Pis, Gis, Uis
     
-    def _update_pairwise_attention(self, neighbor, conflict_intensity: float) -> float:
+    def _compute_pairwise_attention(self, ego_info, neighbor_info: float) -> float:
+        ego_pos = ego_info['position']
+
+        neighbor_pos = neighbor_info['position']
+
+        r0 = np.array(neighbor_pos) - np.array(ego_pos)  # relative position
+        w = np.array(neighbor_info['velocity'])-np.array(ego_info['velocity'])    # relative velocity
+        a = float(np.dot(w, w))
+        b = 2*float(np.dot(r0, w))
+        c = float(np.dot(r0, r0)) - 1.*(NodConfig.neighbors.R_PRED)**2
+        conflict_intensity = 2*expit(1*(b**2/(4*max(a,EPS)) - c))
+
         u_ij = conflict_intensity
-        att_prec_ij = self.pairwise_u[neighbor]
+        att_prec_ij = self.pairwise_u[neighbor_info['name']]
 
         def _pairwise_attn_rhs(att: float) -> float:
             return  (-att + u_ij )
@@ -202,7 +223,7 @@ class NodController:
                 break
             att_score = next_att_score
 
-        self.pairwise_u[neighbor] = att_score
+        self.pairwise_u[neighbor_info['name']] = att_score
         return att_score
     
     def _compute_gate(self, delta_t: float) -> float:
@@ -231,7 +252,7 @@ class NodController:
         w = np.exp((P_abs - np.max(P_abs))/TEMP_SM)  # avoid overflow
         w /= (np.sum(w) + 1e-9)  # normalize to sum to 1
         a_sum = float(max_sign * np.sum(Uis * (w * G)))
-        return a_sum
+        return a_sum * np.sum(P)
     
     def _nod_update(self, z, u, a_sum) -> Tuple[float, float, float]:        
         if a_sum is None:

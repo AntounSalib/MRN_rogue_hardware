@@ -35,14 +35,16 @@ def conflicting_neighbors(ego_info: dict, neighbors_dict: dict) -> Set[str]:
             continue
 
         # ray intersection check
+        if not (solve_ray_intersection(ego_info, neighbor_info)):
+            continue
         s, t = solve_ray_intersection(ego_info, neighbor_info)
         if (s < 0.0 and abs(s) > NodConfig.neighbors.R_OCC):
             continue
 
         ti_occ, tj_occ, ti_rogue= arrival_times_to_disk(ego_info, neighbor_info)
-        # print(f"robot: ego, neighbor: {name}, ti_occ: {ti_occ}, tj_occ: {tj_occ}, ti_rogue: {ti_rogue}, s: {s}, t: {t}, neighbors_dict: {neighbors_dict}")
+        # print(f"robot: {ego_info['name']}, neighbor: {name}, ti_occ: {ti_occ}, tj_occ: {tj_occ}, ti_rogue: {ti_rogue}, s: {s}, t: {t}")
 
-        if (ti_occ is None or tj_occ is None):
+        if (ti_occ is None or tj_occ is None or ti_rogue is None):
             continue
         if (ti_occ > 100 and tj_occ > 100):
             continue

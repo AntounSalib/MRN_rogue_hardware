@@ -42,7 +42,7 @@ def main():
     spawn_model = rospy.ServiceProxy('/gazebo/spawn_sdf_model', SpawnModel)
 
     # Environment layout
-    m = 1.1
+    m = 2.0  # scaling factor
     corner_x0_y0: np.ndarray        = m*np.array([-3.27, -1.23])
     corner_x0_y1: np.ndarray        = m*np.array([-3.1, 3.32])
     corner_x1_y1: np.ndarray        = m*np.array([2.69, 2.73])

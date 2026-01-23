@@ -13,17 +13,18 @@ from nav_msgs.msg import Odometry
 
 from tf.transformations import euler_from_quaternion
 from neighbors import sensed_neighbors
-from constants import ROBOT_NAMES, EPS, NodConfig
+from constants import ROBOT_NAMES, EPS, NodConfig, ROGUE_AGENTS
 
 from gazebo_msgs.srv import GetModelState, GetModelStateRequest, SetModelState
 from gazebo_msgs.msg import ModelState
 
 class Turtlebot:
-    def __init__(self, robot_name, robot_ip, sim, x_init, y_init, z_init):
+    def __init__(self, robot_name, robot_ip, sim, x_init, y_init, z_init, yaw_init, simulation_on):
         self.robot_name = robot_name
         # if robot_ip is provided, use it
         if robot_ip is not None:
             self.robot_ip = robot_ip
+        self.simulation_on = simulation_on
 
         # State variables
         self.prev_time = None
@@ -38,6 +39,9 @@ class Turtlebot:
         if sim:
             pos_init = np.array([x_init, y_init])
             self.pos = np.asarray(pos_init, dtype=float)
+            heading_init = yaw_init
+            self.info["position"] = [float(x_init), float(y_init)]
+            self.info["heading"] = float(heading_init)
         else:
             self.pos = None
 
@@ -187,13 +191,13 @@ class Turtlebot:
     def _get_v_commanded(self, v_target):
         v_current = np.linalg.norm(self.info["velocity"])
 
-        def _v_dot_rhs(att: float) -> float:
-            return  NodConfig.kin.KAPPA_V*(v_target - v_current)
+        def _v_dot_rhs(v_val: float) -> float:
+            return  NodConfig.kin.KAPPA_V*(v_target - v_val)
         
         
         # Iterate RK4 updates on the rogueness score until it stabilizes
         time_step = 0.1
-        for _ in range(100):
+        for _ in range(1):
             k1 = _v_dot_rhs(v_current)
             k2 = _v_dot_rhs(v_current + 0.5 * time_step * k1)
             k3 = _v_dot_rhs(v_current + 0.5 * time_step * k2)
@@ -208,16 +212,20 @@ class Turtlebot:
         return v_current
 
     def run(self):
-        
-        v_tar = self.nod_controller.update_opinion(self.info, self.neighbors, time.time())
-        v_command = self._get_v_commanded(v_tar)
-
-        ego_pos = np.array(self.info['position'])
-        if abs(ego_pos[0]) > 2.9 or abs(ego_pos[1]) > 2.9 or (ego_pos[1]) < -2:
+        ego_pos = self.info['position']
+        if (abs(ego_pos[0]) > 2.9 or abs(ego_pos[1]) > 2.9 or (ego_pos[1]) < -3):
             # print(f"{self.robot_name} reached goal at {ego_pos}, stopping.")
             self.move(0, 0)
-        else:
-            self.move(v_command, 0)
+            return
+
+
+        if self.robot_name in ROGUE_AGENTS:
+            self.move(NodConfig.kin.V_NOMINAL, 0)
+            return
+
+        v_tar = self.nod_controller.update_opinion(self.info, self.neighbors, time.time())
+        v_command = self._get_v_commanded(v_tar)
+        self.move(v_command, 0)
 
         self.rate.sleep()
 
@@ -231,25 +239,33 @@ if __name__ == '__main__':
     parser.add_argument('-x', type=float)
     parser.add_argument('-y', type=float)
     parser.add_argument('-z', type=float)
+    parser.add_argument('-Y', type=float, default=0.0)
 
     args, unknown = parser.parse_known_args()
     if args.sim == '1':
+        simulation_on = True
+    else:
+        simulation_on = False
+
+    if simulation_on:
         # Positional arguments
         sim = 1
         x_init = args.x
         y_init = args.y
         z_init = args.z 
+        yaw_init = args.Y
         robot_ip = None
     else:
         sim = 0
         x_init = None
         y_init = None
         z_init = None
+        yaw_init = None
         robot_ip = args.robot_ip
 
 
     print("Starting", args.robot_name)
-    tb = Turtlebot(args.robot_name, robot_ip, sim, x_init,y_init,z_init)
+    tb = Turtlebot(args.robot_name, robot_ip, sim, x_init,y_init,z_init, yaw_init, simulation_on)
 
     time.sleep(10)
 
