@@ -40,6 +40,7 @@ def conflicting_neighbors(ego_info: dict, neighbors_dict: dict) -> Set[str]:
             continue
 
         ti_occ, tj_occ, ti_rogue= arrival_times_to_disk(ego_info, neighbor_info)
+        # print(f"robot: ego, neighbor: {name}, ti_occ: {ti_occ}, tj_occ: {tj_occ}, ti_rogue: {ti_rogue}, s: {s}, t: {t}, neighbors_dict: {neighbors_dict}")
 
         if (ti_occ is None or tj_occ is None):
             continue

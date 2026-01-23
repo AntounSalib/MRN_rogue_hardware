@@ -2,6 +2,7 @@
     <!-- Arguments from launch_all -->
     <arg name="robot_name"/>
     <arg name="robot_ip"/>   
+    <arg name="sim"/>  
     
     <!-- Create Turtlebot machine (i.e. connect to robot)-->
     <machine 
@@ -23,6 +24,6 @@
     
     <!-- Launch controller node/script -->
     <node pkg="MRN_rogue_hardware" type="turtlebot.py" name="turtlebot" output="screen" 
-        args="-robot_name $(arg robot_name) -robot_ip $(arg robot_ip)"/>
+        args="-robot_name $(arg robot_name) -robot_ip $(arg robot_ip) $(arg sim)"/>
 
 </launch>

@@ -1,0 +1,15 @@
+<launch>
+    <arg name="robot_name"/>
+    <arg name="robot_ip" default="127.0.0.1"/>
+    <arg name="init_pose"/>
+    <arg name="sim"/>  
+    
+    <!-- Create turtlebot model in Gazebo -->
+    <arg name="model" default="$(env TURTLEBOT3_MODEL)" doc="model type [burger, waffle, waffle_pi]"/>
+    <node pkg="gazebo_ros" type="spawn_model" name="spawn_urdf" args="-urdf -model $(arg robot_name) $(arg init_pose) -param /robot_description " output="log" />
+
+    <!-- Launch controller node/script -->
+    <node pkg="MRN_rogue_hardware" type="turtlebot.py" name="turtlebot" output="screen" 
+        args="-robot_name $(arg robot_name) $(arg init_pose) $(arg sim)"/>
+
+</launch>

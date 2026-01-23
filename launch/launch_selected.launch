@@ -1,5 +1,14 @@
 <launch>
   <env name="ROSLAUNCH_SSH_UNKNOWN" value="1" />
+
+  <!-- Set turtlebot model for gazebo -->
+  <arg name="model" default="$(env TURTLEBOT3_MODEL)" doc="model type [burger, waffle, waffle_pi]"/>
+
+  <!-- Determine if we are running a simulation, or running on hardware -->
+  <arg name ="sim" default="0"/>  <!-- running on hardware by default -->
+  <!-- <arg name="run_vicon" default="$(eval not arg('sim'))"/> -->
+
+
   <!-- choose robots -->
   <arg name="tb1" default="false"/>
   <arg name="tb2" default="false"/>
@@ -11,71 +20,159 @@
   <arg name="tb8" default="false"/>
   <arg name="tb9" default="false"/>
 
-  <!-- start vicon once -->
-  <include file="$(find vicon_bridge)/launch/vicon.launch" />
+  <!-- Launch vicon if running on hardware or in simulation with vicon data-->
+  <include unless="$(arg sim)" file="$(find vicon_bridge)/launch/vicon.launch" />
+
+  <!-- For simulations, launch Gazebo -->
+  <param name="robot_description" command="$(find xacro)/xacro --inorder $(find turtlebot3_description)/urdf/turtlebot3_$(arg model).urdf.xacro" />
+
+  <!-- If in simulation, dispaly world boundaries in Gazebo-->  
+  <node pkg="MRN_rogue_hardware" type="sim_room_boundaries.py" name="sim_room_boundaries" output="log"  if="$(arg sim)" />
 
   <!-- start selected controllers -->
   <group if="$(arg tb1)" ns="tb1">
-    <include file="$(find MRN_rogue_hardware)/launch/individual.launch">
+    <param name="tf_prefix" value="tb1_tf" />
+    <!-- Launch simulation with pre-selected starting positions -->
+    <include if="$(arg sim)" file="$(find MRN_rogue_hardware)/launch/individual_sim.launch" >
+      <arg name="init_pose" value="-x 2.0 -y 0.0 -z 0.0" /> 
+      <arg name="robot_name"  value="tb1" />
+      <arg name="sim"  value="-sim 1" />   
+    </include>
+
+    <include unless="$(arg sim)" file="$(find MRN_rogue_hardware)/launch/individual.launch">
       <arg name="robot_name" value="tb1"/>
       <arg name="robot_ip" value="192.168.121.191"/>
+      <arg name="sim"  value="-sim 0" />  
     </include>
   </group>
 
   <group if="$(arg tb2)" ns="tb2">
-    <include file="$(find MRN_rogue_hardware)/launch/individual.launch">
+    <param name="tf_prefix" value="tb2_tf" />
+    <!-- Launch simulation with pre-selected starting positions -->
+    <include if="$(arg sim)" file="$(find MRN_rogue_hardware)/launch/individual_sim.launch" >
+      <arg name="init_pose" value="-x 2.0 -y 0.0 -z 0.0" /> 
+      <arg name="robot_name"  value="tb2" />
+      <arg name="sim"  value="-sim 1" />   
+    </include>
+
+    <include unless="$(arg sim)" file="$(find MRN_rogue_hardware)/launch/individual.launch">
       <arg name="robot_name" value="tb2"/>
       <arg name="robot_ip" value="192.168.121.192"/>
+      <arg name="sim"  value="-sim 0" />  
     </include>
   </group>
 
   <group if="$(arg tb3)" ns="tb3">
-    <include file="$(find MRN_rogue_hardware)/launch/individual.launch">
+    <param name="tf_prefix" value="tb3_tf" />
+    <!-- Launch simulation with pre-selected starting positions -->
+    <include if="$(arg sim)" file="$(find MRN_rogue_hardware)/launch/individual_sim.launch" >
+      <arg name="init_pose" value="-x 0.0 -y 2.0 -z 0.0" /> 
+      <arg name="robot_name"  value="tb3" />
+      <arg name="sim"  value="-sim 1" />   
+    </include>
+
+    <include unless="$(arg sim)" file="$(find MRN_rogue_hardware)/launch/individual.launch">
       <arg name="robot_name" value="tb3"/>
       <arg name="robot_ip" value="192.168.121.193"/>
+      <arg name="sim"  value="-sim 0" />  
     </include>
   </group>
 
   <group if="$(arg tb4)" ns="tb4">
-    <include file="$(find MRN_rogue_hardware)/launch/individual.launch">
+
+    <!-- Launch simulation with pre-selected starting positions -->
+    <include if="$(arg sim)" file="$(find MRN_rogue_hardware)/launch/individual_sim.launch" >
+      <arg name="init_pose" value="-x 0.0 -y 2.0 -z 0.0" /> 
+      <arg name="robot_name"  value="tb4" />
+      <arg name="sim"  value="-sim 1" />   
+    </include>
+
+    <include unless="$(arg sim)" file="$(find MRN_rogue_hardware)/launch/individual.launch">
       <arg name="robot_name" value="tb4"/>
       <arg name="robot_ip" value="192.168.121.194"/>
+      <arg name="sim"  value="-sim 0" />  
     </include>
   </group>
 
   <group if="$(arg tb5)" ns="tb5">
-    <include file="$(find MRN_rogue_hardware)/launch/individual.launch">
+    <!-- Launch simulation with pre-selected starting positions -->
+    <include if="$(arg sim)" file="$(find MRN_rogue_hardware)/launch/individual_sim.launch" >
+      <arg name="init_pose" value="-x 0.0 -y 3.0 -z 0.0" /> 
+      <arg name="robot_name"  value="tb5" />
+      <arg name="sim"  value="-sim 1" />   
+    </include>
+
+    <include unless="$(arg sim)" file="$(find MRN_rogue_hardware)/launch/individual.launch">
       <arg name="robot_name" value="tb5"/>
       <arg name="robot_ip" value="192.168.121.195"/>
+      <arg name="sim"  value="-sim 0" />  
     </include>
   </group>
 
   <group if="$(arg tb6)" ns="tb6">
-    <include file="$(find MRN_rogue_hardware)/launch/individual.launch">
+    <!-- Launch simulation with pre-selected starting positions -->
+    <include if="$(arg sim)" file="$(find MRN_rogue_hardware)/launch/individual_sim.launch" >
+      <arg name="init_pose" value="-x 0.0 -y 1.0 -z 0.0" /> 
+      <arg name="robot_name"  value="tb6" />
+      <arg name="sim"  value="-sim 1" />   
+    </include>
+
+    <include unless="$(arg sim)" file="$(find MRN_rogue_hardware)/launch/individual.launch">
       <arg name="robot_name" value="tb6"/>
       <arg name="robot_ip" value="192.168.121.196"/>
+      <arg name="sim"  value="-sim 0" />  
     </include>
   </group>
 
   <group if="$(arg tb7)" ns="tb7">
-    <include file="$(find MRN_rogue_hardware)/launch/individual.launch">
+    <!-- Launch simulation with pre-selected starting positions -->
+    <include if="$(arg sim)" file="$(find MRN_rogue_hardware)/launch/individual_sim.launch" >
+      <arg name="init_pose" value="-x 1.5 -y 2.0 -z 0.0" /> 
+      <arg name="robot_name"  value="tb7" />
+      <arg name="sim"  value="-sim 1" />   
+    </include>
+
+    <include unless="$(arg sim)" file="$(find MRN_rogue_hardware)/launch/individual.launch">
       <arg name="robot_name" value="tb7"/>
       <arg name="robot_ip" value="192.168.121.197"/>
+      <arg name="sim"  value="-sim 0" />  
     </include>
   </group>
 
   <group if="$(arg tb8)" ns="tb8">
-    <include file="$(find MRN_rogue_hardware)/launch/individual.launch">
+    <!-- Launch simulation with pre-selected starting positions -->
+    <include if="$(arg sim)" file="$(find MRN_rogue_hardware)/launch/individual_sim.launch" >
+      <arg name="init_pose" value="-x 2.5 -y 1.0 -z 0.0" /> 
+      <arg name="robot_name"  value="tb8" />
+      <arg name="sim"  value="-sim 1" />   
+    </include>
+
+    <include unless="$(arg sim)" file="$(find MRN_rogue_hardware)/launch/individual.launch">
       <arg name="robot_name" value="tb8"/>
       <arg name="robot_ip" value="192.168.121.198"/>
+      <arg name="sim"  value="-sim 0" />  
     </include>
   </group>
 
   <group if="$(arg tb9)" ns="tb9">
-    <include file="$(find MRN_rogue_hardware)/launch/individual.launch">
+    <!-- Launch simulation with pre-selected starting positions -->
+    <include if="$(arg sim)" file="$(find MRN_rogue_hardware)/launch/individual_sim.launch" >
+      <arg name="init_pose" value="-x 3.0 -y 3.0 -z 0.0" /> 
+      <arg name="robot_name"  value="tb9" />
+      <arg name="sim"  value="-sim 1" />   
+    </include>
+
+    <include unless="$(arg sim)" file="$(find MRN_rogue_hardware)/launch/individual.launch">
       <arg name="robot_name" value="tb9" />
       <arg name="robot_ip" value="192.168.121.199"/>
+      <arg name="sim"  value="-sim 0" />  
     </include>
   </group>
+
+<include if="$(arg sim)" file="$(find gazebo_ros)/launch/empty_world.launch">
+  <arg name="paused" value="true"/>
+  <arg name="use_sim_time" value="true"/>
+</include>
+
 
 </launch>

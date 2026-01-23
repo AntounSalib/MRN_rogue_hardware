@@ -9,15 +9,21 @@ import copy
 from geometry_msgs.msg import Twist, TransformStamped
 from std_msgs.msg import String
 from nod_controller import NodController
+from nav_msgs.msg import Odometry
 
 from tf.transformations import euler_from_quaternion
 from neighbors import sensed_neighbors
-from constants import ROBOT_NAMES, EPS
+from constants import ROBOT_NAMES, EPS, NodConfig
+
+from gazebo_msgs.srv import GetModelState, GetModelStateRequest, SetModelState
+from gazebo_msgs.msg import ModelState
 
 class Turtlebot:
-    def __init__(self, robot_name, robot_ip):
+    def __init__(self, robot_name, robot_ip, sim, x_init, y_init, z_init):
         self.robot_name = robot_name
-        self.robot_ip = robot_ip
+        # if robot_ip is provided, use it
+        if robot_ip is not None:
+            self.robot_ip = robot_ip
 
         # State variables
         self.prev_time = None
@@ -28,6 +34,12 @@ class Turtlebot:
             "velocity": [0.0, 0.0],
             "heading": 0.0,
         }
+
+        if sim:
+            pos_init = np.array([x_init, y_init])
+            self.pos = np.asarray(pos_init, dtype=float)
+        else:
+            self.pos = None
 
         rospy.init_node('tb_controller', anonymous=True)
 
@@ -40,16 +52,29 @@ class Turtlebot:
         vel_heading_str = '/' + self.robot_name + '/info'
         self.info_pub = rospy.Publisher(vel_heading_str, String, queue_size = 10)   
         
-        # Setup Vicon position subscriber
-        vicon_channel = f'/vicon/{robot_name}/{robot_name}'
-        self.pose_sub = rospy.Subscriber(vicon_channel, TransformStamped, self.pose_callback)
+        if not sim:
+            # Setup Vicon position subscriber
+            vicon_channel = f'/vicon/{robot_name}/{robot_name}'
+            self.pose_sub = rospy.Subscriber(vicon_channel, TransformStamped, self.pose_callback)
 
-        # Subscribe to other robots
-        self.neighbors = {}
-        for other_robot in ROBOT_NAMES:
-            if other_robot != self.robot_name:
-                topic_name = f'/{other_robot}/info'
-                rospy.Subscriber(topic_name, String, self.neighbor_callback)
+            # Subscribe to other robots
+            self.neighbors = {}
+            for other_robot in ROBOT_NAMES:
+                if other_robot != self.robot_name:
+                    topic_name = f'/{other_robot}/info'
+                    rospy.Subscriber(topic_name, String, self.neighbor_callback)
+        else:
+            odom_str = '/' + robot_name + '/odom'
+            
+            # Subscribe to the odometry topic '/odom' to receive odometry data
+            self.pose_sub = rospy.Subscriber(odom_str, Odometry, self.sim_pose_callback)
+            
+            # Subscribe to other robots
+            self.neighbors = {}
+            for other_robot in ROBOT_NAMES:
+                if other_robot != self.robot_name:
+                    topic_name = f'/{other_robot}/info'
+                    rospy.Subscriber(topic_name, String, self.neighbor_callback)
 
         # Initialize NodController
         self.nod_controller = NodController(self.robot_name, time.time())
@@ -69,6 +94,37 @@ class Turtlebot:
         
         self.vel_pub.publish(vel_msg)
         self.rate.sleep() 
+
+    def sim_pose_callback(self, data):
+        x = float(data.pose.pose.position.x)
+        y = float(data.pose.pose.position.y)
+
+        orient_quat = data.pose.pose.orientation
+        orient = [orient_quat.x, orient_quat.y, orient_quat.z, orient_quat.w]
+        (_, _, yaw) = euler_from_quaternion(orient)
+
+        # Fill the same info structure used in hardware mode
+        self.info["position"] = [x, y]
+        self.info["heading"] = yaw
+
+        # Get local velocity
+        v_linear = data.twist.twist.linear.x
+        v_lateral = data.twist.twist.linear.y # usually 0 for non-holonomic
+
+        # Rotate to World Frame
+        vx_global = v_linear * math.cos(yaw) - v_lateral * math.sin(yaw)
+        vy_global = v_linear * math.sin(yaw) + v_lateral * math.cos(yaw)
+
+        self.info["velocity"] = [vx_global, vy_global]
+
+        # # Use odom twist as velocity (in the odom frame)
+        # vx = float(data.twist.twist.linear.x)
+        # vy = float(data.twist.twist.linear.y)
+        # self.info["velocity"] = [vx, vy]
+
+        # Publish so neighbors can subscribe
+        self.info_pub.publish(String(data=json.dumps(self.info)))
+
 
     def pose_callback(self, data):
         x = data.transform.translation.x
@@ -126,22 +182,42 @@ class Turtlebot:
         msg_dict = json.loads(msg.data)
         self.neighbors[msg_dict["name"]] = msg_dict
         # print(f"Received info from {msg_dict['name']}: pos={msg_dict['position']}, vel={msg_dict['velocity']}, heading={msg_dict['heading']}")
+ 
 
+    def _get_v_commanded(self, v_target):
+        v_current = np.linalg.norm(self.info["velocity"])
+
+        def _v_dot_rhs(att: float) -> float:
+            return  NodConfig.kin.KAPPA_V*(v_target - v_current)
+        
+        
+        # Iterate RK4 updates on the rogueness score until it stabilizes
+        time_step = 0.1
+        for _ in range(100):
+            k1 = _v_dot_rhs(v_current)
+            k2 = _v_dot_rhs(v_current + 0.5 * time_step * k1)
+            k3 = _v_dot_rhs(v_current + 0.5 * time_step * k2)
+            k4 = _v_dot_rhs(v_current + time_step * k3)
+
+            next_v_current = v_current + (time_step / 6.0) * (k1 + 2 * k2 + 2 * k3 + k4)
+            if abs(next_v_current - v_current) < 1e-4:
+                v_current = next_v_current
+                break
+            v_current = next_v_current
+
+        return v_current
 
     def run(self):
-        """
-        TODO call move here where lin_vel is coming from our autonomy controller (NOD, MPC-CBF, GCBF+) and
-        ang_vel is set to 0 for this project
-        for hardware safety it is advisable to have a low-level cbf screen the autonomy controller
-        TODO get other robot's position, speed, do control, and call move.
-        """
+        
         v_tar = self.nod_controller.update_opinion(self.info, self.neighbors, time.time())
+        v_command = self._get_v_commanded(v_tar)
+
         ego_pos = np.array(self.info['position'])
-        if abs(ego_pos[0]) > 2.9 or abs(ego_pos[1]) > 2.9:
+        if abs(ego_pos[0]) > 2.9 or abs(ego_pos[1]) > 2.9 or (ego_pos[1]) < -2:
             # print(f"{self.robot_name} reached goal at {ego_pos}, stopping.")
             self.move(0, 0)
         else:
-            self.move(v_tar, 0)
+            self.move(v_command, 0)
 
         self.rate.sleep()
 
@@ -149,12 +225,31 @@ if __name__ == '__main__':
     import argparse
     parser = argparse.ArgumentParser("Turtlebot controller")
     parser.add_argument('-robot_name', type=str, required=True)
-    parser.add_argument('-robot_ip', type=str, required=True)
+    parser.add_argument('-robot_ip', type=str)
+    parser.add_argument('-sim', type=str, required=True)
+    # parser.add_argument('-run_vicon', type=str, required=True)
+    parser.add_argument('-x', type=float)
+    parser.add_argument('-y', type=float)
+    parser.add_argument('-z', type=float)
 
     args, unknown = parser.parse_known_args()
+    if args.sim == '1':
+        # Positional arguments
+        sim = 1
+        x_init = args.x
+        y_init = args.y
+        z_init = args.z 
+        robot_ip = None
+    else:
+        sim = 0
+        x_init = None
+        y_init = None
+        z_init = None
+        robot_ip = args.robot_ip
+
 
     print("Starting", args.robot_name)
-    tb = Turtlebot(args.robot_name, args.robot_ip)
+    tb = Turtlebot(args.robot_name, robot_ip, sim, x_init,y_init,z_init)
 
     time.sleep(10)
 
