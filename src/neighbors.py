@@ -34,41 +34,22 @@ def conflicting_neighbors(ego_info: dict, neighbors_dict: dict) -> Set[str]:
         if distance > NodConfig.neighbors.SENSING_RANGE:
             continue
 
-        # check if will intersect in future
-        pij = np.array(ego_pos) -  np.array(neighbor_pos)
-        ei = np.array(ego_info['velocity']) / (np.linalg.norm(np.array(ego_info['velocity'])))
-        ej = np.array(neighbor_info['velocity']) / (np.linalg.norm(np.array(neighbor_info['velocity'])))
-        if not will_intersect_in_future(pij, ei, ej):
+        # ray intersection check
+        s, t = solve_ray_intersection(ego_info, neighbor_info)
+        if (s < 0.0 and abs(s) > NodConfig.neighbors.R_OCC):
             continue
 
-        # check if will come within R_PRED
-        r0 = np.array(neighbor_pos) - np.array(ego_pos)  # relative position
-        w = np.array(neighbor_info['velocity'])-np.array(ego_info['velocity'])    # relative velocity
-        a = float(np.dot(w, w))
-        b = 2*float(np.dot(r0, w))
-        c = float(np.dot(r0, r0)) - 1.*(NodConfig.neighbors.R_PRED)**2
-        kept = (b**2 - 4*a*c >= 0)
-        print(f"robot: {ego_info['name']}, neighbor: {name}, a: {a:.3f}, b: {b:.3f}, c: {c:.3f}, discriminant: {b**2 - 4*a*c:.3f}, kept: {kept}")
+        ti_occ, tj_occ, ti_rogue= arrival_times_to_disk(ego_info, neighbor_info)
 
-        if kept: 
-            conflicting.add(name)
-     
+        if (ti_occ is None or tj_occ is None):
+            continue
+        if (ti_occ > 100 and tj_occ > 100):
+            continue
+
+
+        conflicting.add(name)
 
     return conflicting
-
-def will_intersect_in_future(pij: np.ndarray, ei: np.ndarray, ej: np.ndarray):
-    """Solve s*ei = pij - t*ej. Return (s,t) or None if parallel."""
-    A = np.array([[ei[0], -ej[0]], [ei[1], -ej[1]]], float)
-    det = A[0, 0] * A[1, 1] - A[0, 1] * A[1, 0]
-    if abs(det) < 1e-9:
-        return False
-    inv = (1.0 / det) * np.array([[A[1, 1], -A[0, 1]], [-A[1, 0], A[0, 0]]], float)
-    s, t = inv @ pij
-
-    if s < 0.0 or abs(s) > NodConfig.neighbors.R_OCC:
-        return False
-    else:
-        return True
 
 def tca_and_rmin(ego_info: dict, neighbor_info: dict) -> Tuple[float, float]:
     """
@@ -102,3 +83,63 @@ def tca_and_rmin(ego_info: dict, neighbor_info: dict) -> Tuple[float, float]:
 
    
     return t_star, d_star
+
+def solve_ray_intersection(ego_info: dict, neighbor_info: dict) -> Tuple[float, float]:
+    """Solve s*ei = pij - t*ej. Return (s,t) or None if parallel."""
+    ego_pos = np.array(ego_info['position'])
+    ego_vel = np.array(ego_info['velocity'])
+    neighbor_pos = np.array(neighbor_info['position'])
+    neighbor_vel = np.array(neighbor_info['velocity'])
+    pij = neighbor_pos - ego_pos
+    ei = ego_vel / (np.linalg.norm(ego_vel) + EPS)
+    ej = neighbor_vel / (np.linalg.norm(neighbor_vel) + EPS)
+
+    A = np.array([[ei[0], -ej[0]], [ei[1], -ej[1]]], float)
+    det = A[0, 0] * A[1, 1] - A[0, 1] * A[1, 0]
+    if abs(det) < 1e-9:
+        return None
+    inv = (1.0 / det) * np.array([[A[1, 1], -A[0, 1]], [-A[1, 0], A[0, 0]]], float)
+    s, t = inv @ pij
+    return float(s), float(t)
+
+def arrival_times_to_disk(ego_info: dict, neighbor_info: dict) -> float:
+    s, t = solve_ray_intersection(ego_info, neighbor_info)
+
+    inside_i, inside_j = False, False
+    vi = np.linalg.norm(np.array(ego_info['velocity']))
+    vj = np.linalg.norm(np.array(neighbor_info['velocity']))
+    r = NodConfig.neighbors.R_PRED
+    
+    # Neighbor arrival
+    if t < 0.0 and abs(t) > r:
+        tj = None
+    elif t > r:
+        tj = (t - r) / max(vj, EPS)
+    else:
+        tj = 0.0
+        inside_j = True
+
+    # Ego arrival
+    if s < 0.0 and abs(s) > r:
+        ti = None
+        ti_rogue = None
+    elif s > r:
+        ti = (s - r) / max(vi, EPS)
+        if tj is None: 
+            ti_rogue = ti
+        else:
+            ti_entry = ti
+            ti_exit = (s + r*1) / max(vi, EPS)
+            tj_entry = tj
+            tj_exit = (tj_entry + r/max(vj, 1e-9))
+            if (ti_exit < tj_entry) or (tj_exit < ti_entry):
+                ti_rogue = ti
+            else:   
+                ti_rogue = (s + r*1.) / max(vi,EPS)
+    else:
+        ti = 0.0  # already inside or in [0, r)
+        ti_rogue = 0.0
+        inside_i = True
+
+    # print(f"solve_ray_intersection: s={s}, t={t}, ti={ti}, tj={tj}, ti_rogue={ti_rogue}")
+    return ti, tj, ti_rogue
