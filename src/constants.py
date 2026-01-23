@@ -34,4 +34,8 @@ class NodConfig:
         V_NOMINAL = 0.35
         KAPPA_Z = 3.0
         V_MAX = 1
+
+    class cooperation:
+        COOPERATION_LAYER_ON = True
+        COOPERATION_THRESHOLD = 0.3
     
