@@ -163,7 +163,7 @@ class NodController:
             # compute gate
             if NodConfig.cooperation.COOPERATION_LAYER_ON and self.pairwise_cooperation[neighbor] < NodConfig.cooperation.COOPERATION_THRESHOLD:
                 delta_t = ti_cooperation - tj
-                # print(f"robot: {ego_info['name']}, neighbor: {neighbor_info['name']}, using cooperation delta_t: {delta_t}")
+                print(f"robot: {ego_info['name']}, neighbor: {neighbor_info['name']}, cooperation: {self.pairwise_cooperation[neighbor]} using cooperation delta_t: {delta_t}")
             else:
                 delta_t = ti - tj
             G = self._compute_gate(delta_t)
@@ -224,6 +224,7 @@ class NodController:
             att_score = next_att_score
 
         self.pairwise_u[neighbor_info['name']] = att_score
+        # print(f"ego: {ego_info['name']}, neighbor: {neighbor_info['name']}, cooperation level: {self.pairwise_u[neighbor_info['name']]}")
         return att_score
     
     def _compute_gate(self, delta_t: float) -> float:

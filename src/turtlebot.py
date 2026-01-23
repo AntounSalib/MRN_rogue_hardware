@@ -213,7 +213,7 @@ class Turtlebot:
 
     def run(self):
         ego_pos = self.info['position']
-        if (abs(ego_pos[0]) > 2.9 or abs(ego_pos[1]) > 2.9 or (ego_pos[1]) < -3):
+        if (abs(ego_pos[0]) > 5 or abs(ego_pos[1]) > 5 or (ego_pos[1]) < -5):
             # print(f"{self.robot_name} reached goal at {ego_pos}, stopping.")
             self.move(0, 0)
             return

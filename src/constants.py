@@ -1,7 +1,7 @@
 import numpy as np
 
 ROBOT_NAMES = ("tb1", "tb2", "tb3", "tb4", "tb5", "tb6", "tb7", "tb8", "tb9", "tb10", "tb11", "tb12")
-ROGUE_AGENTS = {'tb10'}
+ROGUE_AGENTS = {'tb10', 'tb3'}
 
 EPS = 1e-5
 D_SAFE = 0.3
@@ -26,19 +26,19 @@ ITERATIONS_OD = 50
 
 class NodConfig:
     class neighbors:
-        SENSING_RANGE = 3
+        SENSING_RANGE = 2
         R_PRED = 1.5*np.sqrt(2)*D_SAFE
         R_OCC = 1.*D_SAFE
 
 
     class kin:
-        V_NOMINAL = 0.35
+        V_NOMINAL = 0.2
         KAPPA_Z = 3.0
         KAPPA_V = 3.0
-        V_MAX = 1
+        V_MAX = .5
 
     class cooperation:
-        COOPERATION_LAYER_ON = False
+        COOPERATION_LAYER_ON = True
         COOPERATION_THRESHOLD = 0.3
     
 import numpy as np

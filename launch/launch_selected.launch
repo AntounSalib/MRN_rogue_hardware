@@ -177,7 +177,7 @@
     </include>
   </group>
   
-  <group if="$(arg tb9)" ns="tb10">
+  <group if="$(arg tb10)" ns="tb10">
     <!-- Launch simulation with pre-selected starting positions -->
     <param name="tf_prefix" value="tb10_tf" />
     <include if="$(arg sim)" file="$(find MRN_rogue_hardware)/launch/individual_sim.launch" >
@@ -197,7 +197,7 @@
     <!-- Launch simulation with pre-selected starting positions -->
     <param name="tf_prefix" value="tb11_tf" />
     <include if="$(arg sim)" file="$(find MRN_rogue_hardware)/launch/individual_sim.launch" >
-      <arg name="init_pose" value="-x 3.0 -y 0.0 -z 0.0 -Y 0/0" /> 
+      <arg name="init_pose" value="-x -2.8 -y 0.0 -z 0.0 -Y 0.0" /> 
       <arg name="robot_name"  value="tb11" />
       <arg name="sim"  value="-sim 1" />   
     </include>
