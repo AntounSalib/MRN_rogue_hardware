@@ -1,7 +1,7 @@
 import numpy as np
 
 ROBOT_NAMES = ("tb1", "tb2", "tb3", "tb4", "tb5", "tb6", "tb7", "tb8", "tb9", "tb10", "tb11", "tb12")
-HUMAN_NAMES = {"CRNR_X0_Y0"}
+HUMAN_NAMES = {"hat2"}
 ROGUE_AGENTS = {'tb10'}
 
 TRIAL_ID = 1

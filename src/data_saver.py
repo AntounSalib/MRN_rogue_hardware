@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-from constants import TRIAL_ID, TRIAL_SEED, NodConfig, ROBOT_NAMES
+from constants import TRIAL_ID, TRIAL_SEED, NodConfig, ROBOT_NAMES, HUMAN_NAMES
 
 # ROS Libraries/Packages
 import rospy
@@ -9,6 +9,7 @@ from std_msgs.msg import Header, Bool, Float32, Int16
 from geometry_msgs.msg import Pose, Point, Quaternion, Twist, TransformStamped
 from gazebo_msgs.srv import GetModelState, GetModelStateRequest, SpawnModel, SetModelState, DeleteModel
 from gazebo_msgs.msg import ModelState
+from tf.transformations import euler_from_quaternion
 
 import os
 import csv
@@ -45,6 +46,56 @@ class ImportsDataSaver:
             shutil.copy(src_path, dst_path)
 
 # ===========================================================
+# ==================   HUMAN DATA SAVER   ===================
+# ===========================================================
+
+class HumanDataSaver:
+    def __init__(self, name):
+        self.name = name
+        self.folder = os.path.join(TRIAL_PATH, self.name)
+        os.makedirs(self.folder, exist_ok=True)
+
+        # Filename
+        self.file_path = os.path.join(self.folder, f"{self.name}_data.csv")
+        
+        self.prev_time = None
+        self.prev_pos = None
+
+        self._init_files()
+        
+        # Subscribe to Vicon
+        vicon_topic = f'/vicon/{self.name}/{self.name}'
+        rospy.Subscriber(vicon_topic, TransformStamped, self.callback)
+
+    def _init_files(self):
+        if not os.path.exists(self.file_path):
+            with open(self.file_path, "w", newline="") as f:
+                csv.writer(f).writerow(["t", "x", "y", "heading", "vx", "vy"])
+
+    def callback(self, data):
+        t = data.header.stamp.to_sec()
+        x = data.transform.translation.x
+        y = data.transform.translation.y
+        
+        # Orientation
+        q = data.transform.rotation
+        orient = [q.x, q.y, q.z, q.w]
+        (_, _, heading) = euler_from_quaternion(orient)
+        
+        vx, vy = 0.0, 0.0
+        if self.prev_time is not None:
+            dt = t - self.prev_time
+            if dt > 0:
+                vx = (x - self.prev_pos[0]) / dt
+                vy = (y - self.prev_pos[1]) / dt
+        
+        self.prev_time = t
+        self.prev_pos = [x, y]
+        
+        with open(self.file_path, "a", newline="") as f:
+            csv.writer(f).writerow([t, x, y, heading, vx, vy])
+
+# ===========================================================
 # ==================   ROBOT DATA SAVER   ===================
 # ===========================================================
 
@@ -58,7 +109,7 @@ class RobotDataSaver:
         self.file_path = os.path.join(self.folder, f"{self.name}_data.csv")
         
         # Identify other robots for column headers
-        self.other_robots = [r for r in ROBOT_NAMES if r != self.name]
+        self.other_robots = [r for r in ROBOT_NAMES if r != self.name] + sorted(list(HUMAN_NAMES))
 
         self._init_files()
 
@@ -71,6 +122,8 @@ class RobotDataSaver:
                     f"p_att_{r}",
                     f"p_coop_{r}",
                     f"p_coop_att_{r}",
+                    f"x_{r}",
+                    f"y_{r}",
                     f"vx_{r}",
                     f"vy_{r}"
                 ])
@@ -105,9 +158,10 @@ class RobotDataSaver:
                 # Neighbor Speed
                 nb_data = neighbors[r]
                 vx, vy = nb_data['velocity']
-                row.extend([p_att, p_coop, p_coop_att, vx, vy])
+                nx, ny = nb_data['position']
+                row.extend([p_att, p_coop, p_coop_att, nx, ny, vx, vy])
             else:
-                row.extend([np.nan, np.nan, np.nan, np.nan, np.nan])
+                row.extend([np.nan, np.nan, np.nan, np.nan, np.nan, np.nan, np.nan])
 
         with open(self.file_path, "a", newline="") as f:
             csv.writer(f).writerow(row)
@@ -118,6 +172,12 @@ def main():
     try:
         Idt = ImportsDataSaver()
         Idt.save_all_config_info()
+        
+        # Initialize human savers
+        human_savers = []
+        for h_name in HUMAN_NAMES:
+            human_savers.append(HumanDataSaver(h_name))
+            
         rospy.loginfo(f"Data folder ready: {TRIAL_PATH}")
         rospy.spin()
     except rospy.ROSInterruptException:

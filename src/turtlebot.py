@@ -14,7 +14,7 @@ from nav_msgs.msg import Odometry
 from tf.transformations import euler_from_quaternion
 from data_saver import RobotDataSaver, ImportsDataSaver
 from neighbors import sensed_neighbors
-from constants import ROBOT_NAMES, EPS, NodConfig, ROGUE_AGENTS
+from constants import ROBOT_NAMES, EPS, NodConfig, ROGUE_AGENTS, HUMAN_NAMES
 
 from gazebo_msgs.srv import GetModelState, GetModelStateRequest, SetModelState
 from gazebo_msgs.msg import ModelState
@@ -69,6 +69,13 @@ class Turtlebot:
                 if other_robot != self.robot_name:
                     topic_name = f'/{other_robot}/info'
                     rospy.Subscriber(topic_name, String, self.neighbor_callback)
+            
+            # Subscribe to humans
+            self.human_states = {}
+            for human_name in HUMAN_NAMES:
+                self.human_states[human_name] = {'prev_time': None, 'prev_pos': None, 'velocity': [0.0, 0.0]}
+                vicon_topic = f'/vicon/{human_name}/{human_name}'
+                rospy.Subscriber(vicon_topic, TransformStamped, self.human_callback, callback_args=human_name)
         else:
             odom_str = '/' + robot_name + '/odom'
             
@@ -194,6 +201,32 @@ class Turtlebot:
         self.neighbors[msg_dict["name"]] = msg_dict
         # print(f"Received info from {msg_dict['name']}: pos={msg_dict['position']}, vel={msg_dict['velocity']}, heading={msg_dict['heading']}")
  
+    def human_callback(self, data, human_name):
+        x = data.transform.translation.x
+        y = data.transform.translation.y
+        current_time = data.header.stamp.to_sec()
+
+        # Orientation
+        orient_quat = data.transform.rotation
+        orient = [orient_quat.x, orient_quat.y, orient_quat.z, orient_quat.w]
+        (_, _, yaw) = euler_from_quaternion(orient)
+
+        # Velocity calculation
+        state = self.human_states[human_name]
+        vx, vy = state['velocity']
+
+        if state['prev_time'] is not None:
+            dt = current_time - state['prev_time']
+            if dt > 0:
+                vx = (x - state['prev_pos'][0]) / dt
+                vy = (y - state['prev_pos'][1]) / dt
+        
+        state['prev_time'] = current_time
+        state['prev_pos'] = [x, y]
+        state['velocity'] = [vx, vy]
+
+        # Update neighbors dict
+        self.neighbors[human_name] = {"name": human_name, "position": [x, y], "velocity": [vx, vy], "heading": yaw}
 
     def _get_v_commanded(self, v_target):
         v_current = np.linalg.norm(self.info["velocity"])
