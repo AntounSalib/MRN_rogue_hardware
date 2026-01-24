@@ -35,7 +35,7 @@ class NodController:
 
         Pis, Gis, Uis = self._compute_pressure_and_gates(ego_info, neighbors_dict, sens_neighbors)
 
-        a_sum = self._aggregate(Pis, Gis, Uis)
+        a_sum,sumP = self._aggregate(Pis, Gis, Uis)
 
         # update nod variables
         dt = current_time - self.current_time 
@@ -44,7 +44,7 @@ class NodController:
 
         # for _ in range(n_fast):
         self.z, self.u = self._integrate_fast(
-        self.z, self.u, a_sum, dt)
+        self.z, self.u, a_sum, sumP, dt)
 
         # compute target velocity
         v0 = NodConfig.kin.V_NOMINAL
@@ -151,7 +151,7 @@ class NodController:
 
             if (ti is None or tj is None or ti_cooperation is None):
                 continue
-            if (ti > 100 or tj > 100):
+            if (ti > 40 or tj > 40):
                 continue
        
             
@@ -163,7 +163,7 @@ class NodController:
             # compute gate
             if NodConfig.cooperation.COOPERATION_LAYER_ON and self.pairwise_cooperation[neighbor] < NodConfig.cooperation.COOPERATION_THRESHOLD:
                 delta_t = ti_cooperation - tj
-                print(f"robot: {ego_info['name']}, neighbor: {neighbor_info['name']}, cooperation: {self.pairwise_cooperation[neighbor]} using cooperation delta_t: {delta_t}")
+                # print(f"robot: {ego_info['name']}, neighbor: {neighbor_info['name']}, cooperation: {self.pairwise_cooperation[neighbor]} using cooperation delta_t: {delta_t}")
             else:
                 delta_t = ti - tj
             G = self._compute_gate(delta_t)
@@ -243,7 +243,7 @@ class NodController:
     
     def _aggregate(self, Pis, Gis, Uis) -> float:
         if len(Pis) == 0:
-            return None
+            return None, None
 
         P = np.asarray(Pis, float)
         G = np.asarray(Gis, float)
@@ -253,13 +253,13 @@ class NodController:
         w = np.exp((P_abs - np.max(P_abs))/TEMP_SM)  # avoid overflow
         w /= (np.sum(w) + 1e-9)  # normalize to sum to 1
         a_sum = float(max_sign * np.sum(Uis * (w * G)))
-        return a_sum * np.sum(P)
+        return a_sum,np.sum(P)
     
-    def _nod_update(self, z, u, a_sum) -> Tuple[float, float, float]:        
+    def _nod_update(self, z, u, a_sum, sumP) -> Tuple[float, float, float]:        
         if a_sum is None:
             return self._free_flow(z, u)
 
-        u_eff = U_0 + K_U * (z**2)
+        u_eff = sumP + K_U * (z**2)
         z_dot = (float(-OPINION_DECAY* z + np.tanh(u * a_sum)))/TAU_Z
         u_dot = float(-ATTENTION_DECAY * u + u_eff )/TIMING_TAU_U_RELAX
         
@@ -272,11 +272,11 @@ class NodController:
             return z_dot, u_dot, 0
 
     def _integrate_fast(self, z0: float, u0: float,
-                       a_sum: float, horizon_s: float) -> Tuple[float, float]:
+                       a_sum: float, sumP: float, horizon_s: float) -> Tuple[float, float]:
         
         last_u_eff = [u0]
         def fast_rhs(_t, y):
-            dz, du, u_eff = self._nod_update(y[0], y[1], a_sum)
+            dz, du, u_eff = self._nod_update(y[0], y[1], a_sum, sumP)
             last_u_eff[0] = u_eff
             return [dz, du]
 

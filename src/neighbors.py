@@ -111,7 +111,7 @@ def arrival_times_to_disk(ego_info: dict, neighbor_info: dict) -> float:
     inside_i, inside_j = False, False
     vi = np.linalg.norm(np.array(ego_info['velocity']))
     vj = np.linalg.norm(np.array(neighbor_info['velocity']))
-    r = NodConfig.neighbors.R_PRED
+    r = NodConfig.neighbors.R_OCC
     
     # Neighbor arrival
     if t < 0.0 and abs(t) > r:

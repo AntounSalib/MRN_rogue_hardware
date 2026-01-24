@@ -160,7 +160,7 @@ class Turtlebot:
                 vx = (x - prev_pos[0]) / dt
                 vy = (y - prev_pos[1]) / dt
                 # low-pass filter
-                alpha = 1  # smoothing factor
+                alpha = 0.75  # smoothing factor
                 self.info["velocity"][0] = alpha * vx + (1 - alpha) * prev_info["velocity"][0]
                 self.info["velocity"][1] = alpha * vy + (1 - alpha) * prev_info["velocity"][1]
 
@@ -261,7 +261,7 @@ class Turtlebot:
         sens_neighbors = sensed_neighbors(self.info, self.neighbors)
 
         if self.robot_name in ROGUE_AGENTS:
-            self.target_speed = NodConfig.kin.V_NOMINAL
+            self.target_speed = NodConfig.kin.V_ROGUE
             self.data_saver.save_data(self.info, self.neighbors, sens_neighbors, self.nod_controller, self.target_speed)
             self.move(self.target_speed, 0)
             return
