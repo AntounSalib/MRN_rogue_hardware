@@ -12,6 +12,7 @@ from nod_controller import NodController
 from nav_msgs.msg import Odometry
 
 from tf.transformations import euler_from_quaternion
+from data_saver import RobotDataSaver, ImportsDataSaver
 from neighbors import sensed_neighbors
 from constants import ROBOT_NAMES, EPS, NodConfig, ROGUE_AGENTS
 
@@ -35,6 +36,7 @@ class Turtlebot:
             "velocity": [0.0, 0.0],
             "heading": 0.0,
         }
+        self.target_speed = 0.0
 
         if sim:
             pos_init = np.array([x_init, y_init])
@@ -82,6 +84,11 @@ class Turtlebot:
 
         # Initialize NodController
         self.nod_controller = NodController(self.robot_name, time.time())
+        self.data_saver = RobotDataSaver(self.robot_name)
+
+        # Save configuration files
+        config_saver = ImportsDataSaver()
+        config_saver.save_all_config_info()
 
         rospy.on_shutdown(self.tb_stop)
 
@@ -146,7 +153,7 @@ class Turtlebot:
                 vx = (x - prev_pos[0]) / dt
                 vy = (y - prev_pos[1]) / dt
                 # low-pass filter
-                alpha = .3  # smoothing factor
+                alpha = 1  # smoothing factor
                 self.info["velocity"][0] = alpha * vx + (1 - alpha) * prev_info["velocity"][0]
                 self.info["velocity"][1] = alpha * vy + (1 - alpha) * prev_info["velocity"][1]
 
@@ -160,10 +167,10 @@ class Turtlebot:
         (roll, pitch, yaw) = euler_from_quaternion(orient)
         self.info["heading"] = yaw
 
-        # computing linear velocities based on commanded velocity and heading
-        vel_mag = math.hypot(self.info["velocity"][0], self.info["velocity"][1]) + EPS
-        self.info["velocity"][0] = vel_mag * math.cos(self.info["heading"])
-        self.info["velocity"][1] = vel_mag * math.sin(self.info["heading"])
+        # # computing linear velocities based on commanded velocity and heading
+        # vel_mag = math.hypot(self.info["velocity"][0], self.info["velocity"][1]) + EPS
+        # self.info["velocity"][0] = vel_mag * math.cos(self.info["heading"])
+        # self.info["velocity"][1] = vel_mag * math.sin(self.info["heading"])
 
         # --- Publish info as JSON string ---
         info_msg = String(data=json.dumps(self.info))
@@ -213,18 +220,22 @@ class Turtlebot:
 
     def run(self):
         ego_pos = self.info['position']
-        if (abs(ego_pos[0]) > 5 or abs(ego_pos[1]) > 5 or (ego_pos[1]) < -5):
+        if not self.simulation_on and (abs(ego_pos[0]) > 2.8 or abs(ego_pos[1]) > 2.8 or (ego_pos[1]) < -2):
             # print(f"{self.robot_name} reached goal at {ego_pos}, stopping.")
             self.move(0, 0)
             return
 
+        sens_neighbors = sensed_neighbors(self.info, self.neighbors)
 
         if self.robot_name in ROGUE_AGENTS:
-            self.move(NodConfig.kin.V_NOMINAL, 0)
+            self.target_speed = NodConfig.kin.V_NOMINAL
+            self.data_saver.save_data(self.info, self.neighbors, sens_neighbors, self.nod_controller, self.target_speed)
+            self.move(self.target_speed, 0)
             return
 
-        v_tar = self.nod_controller.update_opinion(self.info, self.neighbors, time.time())
-        v_command = self._get_v_commanded(v_tar)
+        self.target_speed = self.nod_controller.update_opinion(self.info, self.neighbors, time.time())
+        self.data_saver.save_data(self.info, self.neighbors, sens_neighbors, self.nod_controller, self.target_speed)
+        v_command = self._get_v_commanded(self.target_speed)
         self.move(v_command, 0)
 
         self.rate.sleep()
