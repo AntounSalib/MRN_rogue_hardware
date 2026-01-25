@@ -1,11 +1,11 @@
 import numpy as np
 
 ROBOT_NAMES = ("tb1", "tb2", "tb3", "tb4", "tb5", "tb6", "tb7", "tb8", "tb9", "tb10", "tb11", "tb12")
-HUMAN_NAMES = {"crnr_x0_y0"}
-ROGUE_AGENTS = {"tb4"}
+HUMAN_NAMES = {"crnr_x0_y0", "crnr_x0_y1", "crnr_x1_y0", "crnr_x1_y1"}
+ROGUE_AGENTS = {}
 
-TRIAL_ID = 1
-TRIAL_SEED = 2
+TRIAL_ID = "ID_3_4H"
+TRIAL_SEED = "1"
 
 
 EPS = 1e-5
@@ -38,7 +38,7 @@ class NodConfig:
 
     class kin:
         V_NOMINAL = 0.15
-        V_ROGUE = 0.2
+        V_ROGUE = 0.01
         KAPPA_Z = 5.0
         KAPPA_V = 5.0
         V_MAX = 0.5

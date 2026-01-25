@@ -95,7 +95,7 @@ class NodController:
             
             bj = x*(delta_vj*(-Phi_dot_vj))/abs(delta_Phi)+(1-x)*((-1*y*delta_Phi)+(1-y)) 
             
-            _, d_min = tca_and_rmin(ego_info, neighbor_info)
+            _, d_min = tca_and_rmin(ego_info, neighbor_info, False, False)
             d = 1
             u_prev = self.pairwise_cooperation_attention[neighbor]
 
@@ -136,25 +136,31 @@ class NodController:
         for neighbor in conflicting_neighbors:
             # get neighbor info
             neighbor_info = neighbor_dict[neighbor]
-            t_star, d_min = tca_and_rmin(ego_info, neighbor_info)
             # print(f"robot: {self.robot_name}, neighbor: {neighbor}, ti: {ti:.3f}, tj: {tj:.3f}, delta_t: {delta_t:.3f}, t_star: {t_star:.3f}, d_min: {d_min:.3f}")
             
 
             # neighbor pruning
             if not (solve_ray_intersection(ego_info, neighbor_info)):
+                # print(f"nhbr: {neighbor_info['name']}, not intersecting rays")
                 continue
             s, t = solve_ray_intersection(ego_info, neighbor_info)
             if (s < 0.0 and abs(s) > NodConfig.neighbors.R_OCC):
+                # print(f"nhbr: {neighbor_info['name']}, not conflicting, {s=}, {t=}")
                 continue
-            ti, tj, ti_cooperation= arrival_times_to_disk(ego_info, neighbor_info)
+            ti, tj, ti_cooperation, inside_i, inside_j= arrival_times_to_disk(ego_info, neighbor_info)
             # print(f"robot: {ego_info['name']}, neighbor: {neighbor_info['name']}, ti: {ti}, tj: {tj}, ti_rogue: {ti_cooperation}, s: {s}, t: {t}")
 
             if (ti is None or tj is None or ti_cooperation is None):
+                # print(f"nhbr: {neighbor_info['name']}, NONE")
                 continue
-            if (ti > 40 or tj > 40):
+            if (ti > 40 or tj > 40) and tj != 0:
+                # print(f"nhbr: {neighbor_info['name']}, >40, {ti=}, {tj=}")
                 continue
        
-            
+            # print("still in the loop though")
+            t_star, d_min = tca_and_rmin(ego_info, neighbor_info, inside_i, inside_j)
+
+
             # compute pressure
             P_time = 2*float(expit(float(KAPPA_TCA) * (float(T_COLL) - t_star)))
             P_distance = 2*float(expit(float(KAPPA_DMIN) * (DMIN_CLEAR - d_min)))
@@ -259,7 +265,7 @@ class NodController:
         if a_sum is None:
             return self._free_flow(z, u)
 
-        u_eff = sumP + K_U * (z**2)
+        u_eff = U_0 + K_U * (z**2)
         z_dot = (float(-OPINION_DECAY* z + np.tanh(u * a_sum)))/TAU_Z
         u_dot = float(-ATTENTION_DECAY * u + u_eff )/TIMING_TAU_U_RELAX
         

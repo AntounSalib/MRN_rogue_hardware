@@ -110,8 +110,10 @@ class Turtlebot:
         vel_msg.angular.y = 0.0    
         vel_msg.angular.z = 0      
         
-        self.vel_pub.publish(vel_msg)
-        self.rate.sleep() 
+        # Publish multiple times to ensure it is received
+        for _ in range(3):
+            self.vel_pub.publish(vel_msg)
+            time.sleep(0.1)
 
     def sim_pose_callback(self, data):
         x = float(data.pose.pose.position.x)
@@ -253,7 +255,7 @@ class Turtlebot:
 
     def run(self):
         ego_pos = self.info['position']
-        if not self.simulation_on and (abs(ego_pos[0]) > 2.8 or abs(ego_pos[1]) > 2.8 or (ego_pos[1]) < -2):
+        if (abs(ego_pos[0]) > 2.8 or abs(ego_pos[1]) > 2.8 or (ego_pos[1]) < -2):
             # print(f"{self.robot_name} reached goal at {ego_pos}, stopping.")
             self.move(0, 0)
             return
@@ -317,6 +319,5 @@ if __name__ == '__main__':
         while not rospy.is_shutdown():
             tb.run()
         #If we press ctrl + C, the node will stop.
-        rospy.spin()
     except rospy.ROSInterruptException:
         pass

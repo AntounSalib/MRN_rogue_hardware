@@ -54,7 +54,7 @@ def conflicting_neighbors(ego_info: dict, neighbors_dict: dict) -> Set[str]:
 
     return conflicting
 
-def tca_and_rmin(ego_info: dict, neighbor_info: dict) -> Tuple[float, float]:
+def tca_and_rmin(ego_info: dict, neighbor_info: dict, inside_i: bool, inside_j: bool) -> Tuple[float, float]:
     """
     Compute time to closest approach (t_star) and distance at closest approach (d_star) between ego and neighbor
     """
@@ -71,18 +71,24 @@ def tca_and_rmin(ego_info: dict, neighbor_info: dict) -> Tuple[float, float]:
     c = float(np.dot(r0, r0))
 
     if np.linalg.norm(w) <= EPS: # relative velocity negligible
+        # print("EPS Skip")
         return np.inf, np.sqrt(max(0.0, c))
 
     # time to closest appraoch
     tca = -b / a 
     if tca < 0.0:
-        t_star = np.inf
+        if inside_i or inside_j:
+            t_star = 0.0
+        else:
+            t_star = np.inf
     else:
         t_star = tca
 
     # distance at closest approach
     rmin_sq = max(0.0, c - ((b * b) / a))
     d_star = np.sqrt(rmin_sq)
+
+    # print(f"robot: {ego_info['name']}, neighbor: {neighbor_info['name']}, t_star: {t_star:.3f}, d_star: {d_star:.3f}")
 
    
     return t_star, d_star
@@ -145,4 +151,4 @@ def arrival_times_to_disk(ego_info: dict, neighbor_info: dict) -> float:
         inside_i = True
 
     # print(f"solve_ray_intersection: s={s}, t={t}, ti={ti}, tj={tj}, ti_rogue={ti_rogue}")
-    return ti, tj, ti_rogue
+    return ti, tj, ti_rogue, inside_i, inside_j
