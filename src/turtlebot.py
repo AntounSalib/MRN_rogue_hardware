@@ -14,7 +14,8 @@ from nav_msgs.msg import Odometry
 from tf.transformations import euler_from_quaternion
 from data_saver import RobotDataSaver, ImportsDataSaver
 from neighbors import sensed_neighbors
-from constants import ROBOT_NAMES, EPS, NodConfig, ROGUE_AGENTS, HUMAN_NAMES
+from constants import ROBOT_NAMES, EPS, NodConfig, ROGUE_AGENTS, ORCA_AGENTS, HUMAN_NAMES, D_SAFE
+import rvo2
 
 from gazebo_msgs.srv import GetModelState, GetModelStateRequest, SetModelState
 from gazebo_msgs.msg import ModelState
@@ -253,6 +254,33 @@ class Turtlebot:
 
         return v_current
 
+    def _compute_orca_velocity(self):
+        sim = rvo2.PyRVOSimulator(
+            0.1,                               # time step
+            NodConfig.neighbors.SENSING_RANGE, # neighbor distance
+            10,                                # max neighbors
+            2.0,                               # time horizon
+            2.0,                               # time horizon obstacles
+            D_SAFE / 2.0,                      # agent radius
+            NodConfig.kin.V_MAX,               # max speed
+        )
+
+        ego_id = sim.addAgent(tuple(self.info['position']))
+        sim.setAgentVelocity(ego_id, tuple(self.info['velocity']))
+
+        for neighbor_info in self.neighbors.values():
+            n_id = sim.addAgent(tuple(neighbor_info['position']))
+            sim.setAgentVelocity(n_id, tuple(neighbor_info['velocity']))
+            h = neighbor_info['heading']
+            sim.setAgentPrefVelocity(n_id, (NodConfig.kin.V_NOMINAL * math.cos(h),
+                                            NodConfig.kin.V_NOMINAL * math.sin(h)))
+
+        heading = self.info['heading']
+        sim.setAgentPrefVelocity(ego_id, (NodConfig.kin.V_NOMINAL * math.cos(heading),
+                                          NodConfig.kin.V_NOMINAL * math.sin(heading)))
+        sim.doStep()
+        return sim.getAgentVelocity(ego_id)
+
     def run(self):
         ego_pos = self.info['position']
         if (abs(ego_pos[0]) > 2.8 or abs(ego_pos[1]) > 2.8 or (ego_pos[1]) < -2):
@@ -266,6 +294,17 @@ class Turtlebot:
             self.target_speed = NodConfig.kin.V_ROGUE
             self.data_saver.save_data(self.info, self.neighbors, sens_neighbors, self.nod_controller, self.target_speed)
             self.move(self.target_speed, 0)
+            return
+
+        if self.robot_name in ORCA_AGENTS:
+            orca_vel = self._compute_orca_velocity()
+            heading = self.info['heading']
+            v_lin = float(np.clip(
+                orca_vel[0] * math.cos(heading) + orca_vel[1] * math.sin(heading),
+                0.0, NodConfig.kin.V_MAX
+            ))
+            self.data_saver.save_data(self.info, self.neighbors, sens_neighbors, self.nod_controller, v_lin)
+            self.move(v_lin, 0)
             return
 
         self.target_speed = self.nod_controller.update_opinion(self.info, self.neighbors, time.time())
