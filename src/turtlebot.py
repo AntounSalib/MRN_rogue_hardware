@@ -270,6 +270,7 @@ class Turtlebot:
 
         self.target_speed = self.nod_controller.update_opinion(self.info, self.neighbors, time.time())
         self.data_saver.save_data(self.info, self.neighbors, sens_neighbors, self.nod_controller, self.target_speed)
+        # print(f"{self.robot_name} target speed: {self.target_speed:.3f}")
         v_command = self._get_v_commanded(self.target_speed)
         self.move(v_command, 0)
 

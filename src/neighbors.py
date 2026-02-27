@@ -1,4 +1,4 @@
-from typing import Set, Tuple
+from typing import Optional, Set, Tuple
 from constants import NodConfig, EPS
 import numpy as np
 
@@ -137,14 +137,14 @@ def arrival_times_to_disk(ego_info: dict, neighbor_info: dict) -> float:
         if tj is None: 
             ti_rogue = ti
         else:
-            ti_entry = ti
-            ti_exit = (s + r*1) / max(vi, EPS)
-            tj_entry = tj
-            tj_exit = (tj_entry + r/max(vj, 1e-9))
-            if (ti_exit < tj_entry) or (tj_exit < ti_entry):
-                ti_rogue = ti
-            else:   
-                ti_rogue = (s + r*1.) / max(vi,EPS)
+            # ti_entry = ti
+            # ti_exit = (s + r*1) / max(vi, EPS)
+            # tj_entry = tj
+            # tj_exit = (tj_entry + r/max(vj, 1e-9))
+            # if (ti_exit < tj_entry) or (tj_exit < ti_entry):
+            #     ti_rogue = ti
+            # else:   
+            ti_rogue = (s + r*1.) / max(vi,EPS)
     else:
         ti = 0.0  # already inside or in [0, r)
         ti_rogue = 0.0

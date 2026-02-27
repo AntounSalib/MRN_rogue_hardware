@@ -71,6 +71,12 @@ class NodController:
             vij_vec_norm = float(np.linalg.norm(vij_vec))
             vij_vec_norm = max(vij_vec_norm, 1e-6)
             theta = np.arccos(max(min(np.dot(vij_vec, pij)/(vij_vec_norm*pij_norm), 1), -1))
+            
+            safe_ratio = np.clip(D_SAFE / pij_norm, -1.0, 1.0)
+            theta_prime = np.arcsin(safe_ratio)
+            Phi_prime = np.cos(theta_prime)
+            Phi_geom = np.cos(np.pi - theta)
+
 
             # phi calculations
             ej = neighbor_info['position'] / np.linalg.norm(neighbor_info['position'])
@@ -78,54 +84,54 @@ class NodController:
             Phi = np.cos(theta)
             self.previous_pairwise_phi[neighbor] = Phi
             delta_Phi = Phi - last_Phi
-            Phi_dot_vj = -1*np.sin(theta)*np.dot(pij, ej)
 
             # neighbor velocity calculations 
             prev_vj = self.previous_vj[neighbor]
-            vj = neighbor_info['velocity']
+            vj = np.array(neighbor_info['velocity'], dtype=float)
             self.previous_vj[neighbor] = vj
             delta_vj = np.linalg.norm(vj) - np.linalg.norm(prev_vj)
+
+            pij_hat = pij/pij_norm
+            vij_hat = vij_vec/vij_vec_norm
+            vj_norm = float(np.linalg.norm(vj))
+            vj_unit = vj / max(vj_norm, EPS)
+            e_t = (1 / vij_vec_norm) * (vj_unit - vij_hat * (np.dot(vij_hat, vj)))
+
+            Phi_dot_vj = np.dot(pij_hat, e_t)
             
             
             latest_cooperation_score = self.pairwise_cooperation[neighbor]
             x = math.tanh(10*np.linalg.norm(neighbor_info['velocity']))
             y = math.tanh(abs(delta_Phi))     
-            if abs(delta_Phi) < np.deg2rad(5):   
-                (delta_Phi) = -np.deg2rad(50)
+            g = math.tanh(1*delta_vj)  
+            # if abs(delta_Phi) < np.deg2rad(5):   
+            #     (delta_Phi) = -np.deg2rad(50)
             
-            bj = x*(delta_vj*(-Phi_dot_vj))/abs(delta_Phi)+(1-x)*((-1*y*delta_Phi)+(1-y)) 
+            # bj = x*(delta_vj*(-Phi_dot_vj))/abs(delta_Phi)+(1-x)*((-1*y*delta_Phi)+(1-y)) 
+            bj = abs(g)*g*(math.tanh(10*Phi_dot_vj)) \
+                            + (1-abs(g))* math.tanh(1*(Phi_prime-Phi_geom)) + 1-x
             
             _, d_min = tca_and_rmin(ego_info, neighbor_info, False, False)
             d = 1
             u_prev = self.pairwise_cooperation_attention[neighbor]
+            cooperation_prev = latest_cooperation_score
 
-            def _cooperation_u_rhs(val: float) -> float:
-                return -val+expit((D_SAFE-d_min))
+            def _cooperation_coupled_rhs(_t, y):
+                u_val, score_val = y
+                u_dot = -u_val + expit((D_SAFE - d_min))
+                score_dot = -d * score_val + math.tanh(u_val * score_val + bj)
+                return [u_dot/TAU_Z, score_dot/TAU_Z]
 
-            k1_u = _cooperation_u_rhs(u_prev)
-            k2_u = _cooperation_u_rhs(u_prev + 0.5 * time_step * k1_u)
-            k3_u = _cooperation_u_rhs(u_prev + 0.5 * time_step * k2_u)
-            k4_u = _cooperation_u_rhs(u_prev + time_step * k3_u)
-            u = u_prev + (time_step / 6.0) * (k1_u + 2 * k2_u + 2 * k3_u + k4_u)
+            sol = solve_ivp(
+                _cooperation_coupled_rhs,
+                [0.0, float(time_step)],
+                [u_prev, cooperation_prev],
+                rtol=1e-4,
+                atol=1e-4,
+            )
+            u = float(sol.y[0, -1])
+            cooperation_score = float(sol.y[1, -1])
             self.pairwise_cooperation_attention[neighbor] = u
-
-            def _cooperation_rhs(score: float) -> float:
-                # return beta_input
-                # u=expit((cfg.d_safe-d_min))
-                return  -d * score + math.tanh(u*score ) + bj
-            # Iterate RK4 updates on the cooperation score until it stabilizes
-            cooperation_score = latest_cooperation_score
-            for _ in range(1):
-                k1 = _cooperation_rhs(cooperation_score)
-                k2 = _cooperation_rhs(cooperation_score + 0.5 * time_step * k1)
-                k3 = _cooperation_rhs(cooperation_score + 0.5 * time_step * k2)
-                k4 = _cooperation_rhs(cooperation_score + time_step * k3)
-
-                next_cooperation = cooperation_score + (time_step / 6.0) * (k1 + 2 * k2 + 2 * k3 + k4)
-                if abs(next_cooperation - cooperation_score) < 1e-4:
-                    cooperation_score = next_cooperation
-                    break
-                cooperation_score = next_cooperation
             self.pairwise_cooperation[neighbor] = cooperation_score
 
     def _compute_pressure_and_gates(self, ego_info: dict, neighbor_dict: dict, conflicting_neighbors: set):
@@ -140,10 +146,11 @@ class NodController:
             
 
             # neighbor pruning
-            if not (solve_ray_intersection(ego_info, neighbor_info)):
-                # print(f"nhbr: {neighbor_info['name']}, not intersecting rays")
+            ray_sol = solve_ray_intersection(ego_info, neighbor_info)
+            if not ray_sol:
+                # print(f"[NOD] prune ray_none ego={ego_info['name']} neigh={neighbor}")
                 continue
-            s, t = solve_ray_intersection(ego_info, neighbor_info)
+            s, t = ray_sol
             if (s < 0.0 and abs(s) > NodConfig.neighbors.R_OCC):
                 # print(f"nhbr: {neighbor_info['name']}, not conflicting, {s=}, {t=}")
                 continue
@@ -162,8 +169,8 @@ class NodController:
 
 
             # compute pressure
-            P_time = 2*float(expit(float(KAPPA_TCA) * (float(T_COLL) - t_star)))
-            P_distance = 2*float(expit(float(KAPPA_DMIN) * (DMIN_CLEAR - d_min)))
+            P_time = 1*float(expit(float(KAPPA_TCA) * (float(T_COLL) - t_star)))
+            P_distance = 1*float(expit(float(KAPPA_DMIN) * (DMIN_CLEAR - d_min)))
             P = P_time * P_distance
 
             # compute gate
@@ -206,28 +213,29 @@ class NodController:
         a = float(np.dot(w, w))
         b = 2*float(np.dot(r0, w))
         c = float(np.dot(r0, r0)) - 1.*(NodConfig.neighbors.R_PRED)**2
-        conflict_intensity = 2*expit(1*(b**2/(4*max(a,EPS)) - c))
+        conflict_intensity = 1*expit(1*(b**2/(4*max(a,EPS)) - c))
 
         u_ij = conflict_intensity
-        att_prec_ij = self.pairwise_u[neighbor_info['name']]
+        # att_prec_ij = self.pairwise_u[neighbor_info['name']]
 
-        def _pairwise_attn_rhs(att: float) -> float:
-            return  (-att + u_ij )
+        # def _pairwise_attn_rhs(att: float) -> float:
+        #     return  (-att + u_ij )
         
-        # Iterate RK4 updates on the cooperation score until it stabilizes
-        att_score = float(att_prec_ij)
-        time_step = 0.1
-        for _ in range(100):
-            k1 = _pairwise_attn_rhs(att_score)
-            k2 = _pairwise_attn_rhs(att_score + 0.5 * time_step * k1)
-            k3 = _pairwise_attn_rhs(att_score + 0.5 * time_step * k2)
-            k4 = _pairwise_attn_rhs(att_score + time_step * k3)
+        # # Iterate RK4 updates on the cooperation score until it stabilizes
+        # att_score = float(att_prec_ij)
+        # time_step = 0.1
+        # for _ in range(100):
+        #     k1 = _pairwise_attn_rhs(att_score)
+        #     k2 = _pairwise_attn_rhs(att_score + 0.5 * time_step * k1)
+        #     k3 = _pairwise_attn_rhs(att_score + 0.5 * time_step * k2)
+        #     k4 = _pairwise_attn_rhs(att_score + time_step * k3)
 
-            next_att_score = att_score + (time_step / 6.0) * (k1 + 2 * k2 + 2 * k3 + k4)
-            if abs(next_att_score - att_score) < 1e-4:
-                att_score = next_att_score
-                break
-            att_score = next_att_score
+        #     next_att_score = att_score + (time_step / 6.0) * (k1 + 2 * k2 + 2 * k3 + k4)
+        #     if abs(next_att_score - att_score) < 1e-4:
+        #         att_score = next_att_score
+        #         break
+        #     att_score = next_att_score
+        att_score = u_ij
 
         self.pairwise_u[neighbor_info['name']] = att_score
         # print(f"ego: {ego_info['name']}, neighbor: {neighbor_info['name']}, cooperation level: {self.pairwise_u[neighbor_info['name']]}")
@@ -286,7 +294,7 @@ class NodController:
             last_u_eff[0] = u_eff
             return [dz, du]
 
-        sol = solve_ivp(fast_rhs, [0.0, float(horizon_s)], [z0, u0], rtol=1e-4, atol=1e-4)
+        sol = solve_ivp(fast_rhs, [0.0, 0.5], [z0, u0], rtol=1e-4, atol=1e-4)
         z_end = float(sol.y[0, -1])
         u_end = float(last_u_eff[0])
         return z_end, u_end

@@ -16,10 +16,10 @@ T_COLL = 6.
 KAPPA_SAME = 1.0
 KAPPA_TCA = KAPPA_SAME
 KAPPA_DMIN = KAPPA_SAME
-DMIN_CLEAR = 4*D_SAFE
+DMIN_CLEAR = 2.5*D_SAFE
 PHI_TILT = 0.02
 TEMP_SM = 0.1
-U_0 = 1
+U_0 = 2
 K_U = 0
 OPINION_DECAY = 1
 ATTENTION_DECAY = 1
@@ -31,18 +31,18 @@ ITERATIONS_OD = 50
 
 class NodConfig:
     class neighbors:
-        SENSING_RANGE = 5
+        SENSING_RANGE = 15
         R_PRED = 1.5*np.sqrt(2)*D_SAFE # 0.84
         R_OCC = 1.*D_SAFE
 
 
     class kin:
-        V_NOMINAL = 0.15
-        V_ROGUE = 0.01
+        V_NOMINAL = 0.35
+        V_ROGUE = 0.2
         KAPPA_Z = 5.0
         KAPPA_V = 5.0
         V_MAX = 0.5
 
     class cooperation:
         COOPERATION_LAYER_ON = True
-        COOPERATION_THRESHOLD = 0.3
+        COOPERATION_THRESHOLD = 0.0
