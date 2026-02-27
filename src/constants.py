@@ -11,25 +11,27 @@ TRIAL_SEED = "1"
 EPS = 1e-5
 D_SAFE = 0.4
 
-# Nod parameters
-T_COLL = 6.
-KAPPA_SAME = 1.0
-KAPPA_TCA = KAPPA_SAME
-KAPPA_DMIN = KAPPA_SAME
-DMIN_CLEAR = 2.5*D_SAFE
-PHI_TILT = 0.02
-TEMP_SM = 0.1
-U_0 = 2
-K_U = 0
-OPINION_DECAY = 1
-ATTENTION_DECAY = 1
-TAU_Z = 0.01
-TIMING_TAU_U_RELAX = TAU_Z
-K_U_S = 0
-TAU_Z_RELAX = TAU_Z
-ITERATIONS_OD = 50
-
 class NodConfig:
+    class pressure:
+        T_COLL = 6.
+        KAPPA_SAME = 1.0
+        KAPPA_TCA = KAPPA_SAME
+        KAPPA_DMIN = KAPPA_SAME
+        DMIN_CLEAR = 2.5*D_SAFE
+        PHI_TILT = 0.02
+        TEMP_SM = 0.1
+
+    class dynamics:
+        U_0 = 2
+        K_U = 0
+        K_U_S = 0
+        OPINION_DECAY = 1
+        ATTENTION_DECAY = 1
+        TAU_Z = 0.01
+        TIMING_TAU_U_RELAX = TAU_Z
+        TAU_Z_RELAX = TAU_Z
+        ITERATIONS_OD = 50
+
     class neighbors:
         SENSING_RANGE = 15
         R_PRED = 1.5*np.sqrt(2)*D_SAFE # 0.84

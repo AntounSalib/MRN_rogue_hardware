@@ -5,7 +5,7 @@ from typing import List, Tuple
 from neighbors import conflicting_neighbors, tca_and_rmin, arrival_times_to_disk, sensed_neighbors, solve_ray_intersection
 from scipy.special import expit
 from scipy.integrate import solve_ivp
-from constants import NodConfig, EPS, T_COLL, KAPPA_TCA, KAPPA_DMIN, DMIN_CLEAR, PHI_TILT, TEMP_SM, U_0, K_U, OPINION_DECAY, ATTENTION_DECAY, TAU_Z, TIMING_TAU_U_RELAX, K_U_S, TAU_Z_RELAX, ITERATIONS_OD, D_SAFE
+from constants import NodConfig, EPS, D_SAFE
 
 class NodController:
     def __init__(self, robot_name: str, time: float):
@@ -120,7 +120,7 @@ class NodController:
                 u_val, score_val = y
                 u_dot = -u_val + expit((D_SAFE - d_min))
                 score_dot = -d * score_val + math.tanh(u_val * score_val + bj)
-                return [u_dot/TAU_Z, score_dot/TAU_Z]
+                return [u_dot/NodConfig.dynamics.TAU_Z, score_dot/NodConfig.dynamics.TAU_Z]
 
             sol = solve_ivp(
                 _cooperation_coupled_rhs,
@@ -169,8 +169,8 @@ class NodController:
 
 
             # compute pressure
-            P_time = 1*float(expit(float(KAPPA_TCA) * (float(T_COLL) - t_star)))
-            P_distance = 1*float(expit(float(KAPPA_DMIN) * (DMIN_CLEAR - d_min)))
+            P_time = 1*float(expit(float(NodConfig.pressure.KAPPA_TCA) * (float(NodConfig.pressure.T_COLL) - t_star)))
+            P_distance = 1*float(expit(float(NodConfig.pressure.KAPPA_DMIN) * (NodConfig.pressure.DMIN_CLEAR - d_min)))
             P = P_time * P_distance
 
             # compute gate
@@ -251,7 +251,7 @@ class NodController:
     def _gate_induced_pressure(self, Pis, Gis) -> List[float]:
         gated_Pis = []
         for P, G in zip(Pis, Gis):
-            gated_Pis.append(P * 0.5*(1 - (G) * (PHI_TILT)))
+            gated_Pis.append(P * 0.5*(1 - (G) * (NodConfig.pressure.PHI_TILT)))
         
         return gated_Pis
     
@@ -264,7 +264,7 @@ class NodController:
         P_abs = abs(P)
         max_idx = int(np.argmax(P_abs))
         max_sign = -1.0 if P[max_idx] < 0.0 else 1.0
-        w = np.exp((P_abs - np.max(P_abs))/TEMP_SM)  # avoid overflow
+        w = np.exp((P_abs - np.max(P_abs))/NodConfig.pressure.TEMP_SM)  # avoid overflow
         w /= (np.sum(w) + 1e-9)  # normalize to sum to 1
         a_sum = float(max_sign * np.sum(Uis * (w * G)))
         return a_sum,np.sum(P)
@@ -273,16 +273,16 @@ class NodController:
         if a_sum is None:
             return self._free_flow(z, u)
 
-        u_eff = U_0 + K_U * (z**2)
-        z_dot = (float(-OPINION_DECAY* z + np.tanh(u * a_sum)))/TAU_Z
-        u_dot = float(-ATTENTION_DECAY * u + u_eff )/TIMING_TAU_U_RELAX
+        u_eff = NodConfig.dynamics.U_0 + NodConfig.dynamics.K_U * (z**2)
+        z_dot = (float(-NodConfig.dynamics.OPINION_DECAY* z + np.tanh(u * a_sum)))/NodConfig.dynamics.TAU_Z
+        u_dot = float(-NodConfig.dynamics.ATTENTION_DECAY * u + u_eff )/NodConfig.dynamics.TIMING_TAU_U_RELAX
         
         return z_dot, u_dot, u_eff
     
     def _free_flow(self, z: float, u: float) -> Tuple[float, float, float]:
             # u_eff = 0
-            z_dot = float(-OPINION_DECAY * z)/TAU_Z_RELAX
-            u_dot = float(-ATTENTION_DECAY * u)/TIMING_TAU_U_RELAX
+            z_dot = float(-NodConfig.dynamics.OPINION_DECAY * z)/NodConfig.dynamics.TAU_Z_RELAX
+            u_dot = float(-NodConfig.dynamics.ATTENTION_DECAY * u)/NodConfig.dynamics.TIMING_TAU_U_RELAX
             return z_dot, u_dot, 0
 
     def _integrate_fast(self, z0: float, u0: float,
