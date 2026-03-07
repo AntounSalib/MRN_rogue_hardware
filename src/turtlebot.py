@@ -6,6 +6,8 @@ import json
 import time
 import math
 import copy
+import signal
+import os
 from geometry_msgs.msg import Twist, TransformStamped
 from std_msgs.msg import String
 from nod_controller import NodController
@@ -31,6 +33,7 @@ class Turtlebot:
         # State variables
         self.prev_time = None
         self.commanded_velocity = 0.0
+        self.goal_heading = None  # set on first ORCA step
         self.info = {
             "name": self.robot_name,
             "position": [0.0, 0.0],
@@ -255,6 +258,9 @@ class Turtlebot:
         return v_current
 
     def _compute_orca_velocity(self):
+        if self.goal_heading is None:
+            self.goal_heading = self.info['heading']
+
         sim = rvo2.PyRVOSimulator(
             0.1,                               # time step
             NodConfig.neighbors.SENSING_RANGE, # neighbor distance
@@ -275,9 +281,8 @@ class Turtlebot:
             sim.setAgentPrefVelocity(n_id, (NodConfig.kin.V_NOMINAL * math.cos(h),
                                             NodConfig.kin.V_NOMINAL * math.sin(h)))
 
-        heading = self.info['heading']
-        sim.setAgentPrefVelocity(ego_id, (NodConfig.kin.V_NOMINAL * math.cos(heading),
-                                          NodConfig.kin.V_NOMINAL * math.sin(heading)))
+        sim.setAgentPrefVelocity(ego_id, (NodConfig.kin.V_NOMINAL * math.cos(self.goal_heading),
+                                          NodConfig.kin.V_NOMINAL * math.sin(self.goal_heading)))
         sim.doStep()
         return sim.getAgentVelocity(ego_id)
 
@@ -298,13 +303,18 @@ class Turtlebot:
 
         if self.robot_name in ORCA_AGENTS:
             orca_vel = self._compute_orca_velocity()
-            heading = self.info['heading']
-            v_lin = float(np.clip(
-                orca_vel[0] * math.cos(heading) + orca_vel[1] * math.sin(heading),
-                0.0, NodConfig.kin.V_MAX
-            ))
+            v_lin = float(np.clip(math.hypot(orca_vel[0], orca_vel[1]), 0.0, NodConfig.kin.V_MAX))
+            if v_lin > EPS:
+                desired_heading = math.atan2(orca_vel[1], orca_vel[0])
+                heading = self.info['heading']
+                heading_error = math.atan2(math.sin(desired_heading - heading),
+                                           math.cos(desired_heading - heading))
+                ang_vel = NodConfig.kin.KAPPA_ANG * heading_error
+            else:
+                ang_vel = 0.0
             self.data_saver.save_data(self.info, self.neighbors, sens_neighbors, self.nod_controller, v_lin)
-            self.move(v_lin, 0)
+            self.move(v_lin, ang_vel)
+            self.rate.sleep()
             return
 
         self.target_speed = self.nod_controller.update_opinion(self.info, self.neighbors, time.time())
@@ -353,6 +363,12 @@ if __name__ == '__main__':
     print("Starting", args.robot_name)
     tb = Turtlebot(args.robot_name, robot_ip, sim, x_init,y_init,z_init, yaw_init, simulation_on)
 
+    def handle_sigtstp(signum, frame):
+        tb.tb_stop()
+        signal.signal(signal.SIGTSTP, signal.SIG_DFL)
+        os.kill(os.getpid(), signal.SIGTSTP)
+    signal.signal(signal.SIGTSTP, handle_sigtstp)
+
     time.sleep(10)
 
     try:
@@ -361,3 +377,5 @@ if __name__ == '__main__':
         #If we press ctrl + C, the node will stop.
     except rospy.ROSInterruptException:
         pass
+    finally:
+        tb.tb_stop()
