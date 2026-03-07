@@ -16,7 +16,8 @@ from nav_msgs.msg import Odometry
 from tf.transformations import euler_from_quaternion
 from data_saver import RobotDataSaver, ImportsDataSaver
 from neighbors import sensed_neighbors
-from constants import ROBOT_NAMES, EPS, NodConfig, ROGUE_AGENTS, ORCA_AGENTS, HUMAN_NAMES, D_SAFE
+from constants import ROBOT_NAMES, EPS, NodConfig, ROGUE_AGENTS, ORCA_AGENTS, ORCA_DD_AGENTS, HUMAN_NAMES, D_SAFE
+from orca_dd_controller import NHORCAController
 import rvo2
 
 from gazebo_msgs.srv import GetModelState, GetModelStateRequest, SetModelState
@@ -95,6 +96,7 @@ class Turtlebot:
 
         # Initialize NodController
         self.nod_controller = NodController(self.robot_name, time.time())
+        self.nhorca_controller = NHORCAController() if self.robot_name in ORCA_DD_AGENTS else None
         self.data_saver = RobotDataSaver(self.robot_name)
 
         # Save configuration files
@@ -312,6 +314,15 @@ class Turtlebot:
                 ang_vel = NodConfig.kin.KAPPA_ANG * heading_error
             else:
                 ang_vel = 0.0
+            self.data_saver.save_data(self.info, self.neighbors, sens_neighbors, self.nod_controller, v_lin)
+            self.move(v_lin, ang_vel)
+            self.rate.sleep()
+            return
+
+        if self.robot_name in ORCA_DD_AGENTS:
+            if self.goal_heading is None:
+                self.goal_heading = self.info['heading']
+            v_lin, ang_vel = self.nhorca_controller.compute_velocity(self.info, self.neighbors, self.goal_heading)
             self.data_saver.save_data(self.info, self.neighbors, sens_neighbors, self.nod_controller, v_lin)
             self.move(v_lin, ang_vel)
             self.rate.sleep()
