@@ -4,7 +4,8 @@ ROBOT_NAMES = ("tb1", "tb2", "tb3", "tb4", "tb5", "tb6", "tb7", "tb8", "tb9", "t
 HUMAN_NAMES = {"crnr_x0_y0", "crnr_x0_y1", "crnr_x1_y0", "crnr_x1_y1"}
 ROGUE_AGENTS = set()
 ORCA_AGENTS = set()
-ORCA_DD_AGENTS = {"tb1", "tb4", "tb9", "tb6"}
+ORCA_DD_AGENTS = {}
+MPC_CBF_AGENTS = {"tb6", "tb9"}
 
 TRIAL_ID = "ID_3_4H"
 TRIAL_SEED = "1"
@@ -59,3 +60,12 @@ class NodConfig:
         WHEEL_SEP = 0.287 # TurtleBot3 Waffle wheel separation (m)
         FORWARD_ONLY = True
         PAHV_ANGLES = 65
+
+    class mpc_cbf:
+        N = 5             # prediction horizon (steps)
+        DT = 0.1          # time step (s)
+        GAMMA = 0.3       # CBF decay rate in (0,1]; smaller = more conservative / earlier avoidance
+        OMEGA_MAX = 1.82  # TurtleBot3 Waffle max angular velocity (rad/s)
+        Q_V = 1.0         # stage cost: speed deviation weight
+        Q_W = 0.1         # stage cost: angular velocity weight
+        Q_THETA = 5.0     # terminal cost: heading alignment weight

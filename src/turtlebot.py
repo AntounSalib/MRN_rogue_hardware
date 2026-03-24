@@ -16,8 +16,9 @@ from nav_msgs.msg import Odometry
 from tf.transformations import euler_from_quaternion
 from data_saver import RobotDataSaver, ImportsDataSaver
 from neighbors import sensed_neighbors
-from constants import ROBOT_NAMES, EPS, NodConfig, ROGUE_AGENTS, ORCA_AGENTS, ORCA_DD_AGENTS, HUMAN_NAMES, D_SAFE
+from constants import ROBOT_NAMES, EPS, NodConfig, ROGUE_AGENTS, ORCA_AGENTS, ORCA_DD_AGENTS, MPC_CBF_AGENTS, HUMAN_NAMES, D_SAFE
 from orca_dd_controller import NHORCAController
+from mpc_cbf_controller import MPCCBFController
 import rvo2
 
 from gazebo_msgs.srv import GetModelState, GetModelStateRequest, SetModelState
@@ -97,6 +98,7 @@ class Turtlebot:
         # Initialize NodController
         self.nod_controller = NodController(self.robot_name, time.time())
         self.nhorca_controller = NHORCAController() if self.robot_name in ORCA_DD_AGENTS else None
+        self.mpc_cbf_controller = MPCCBFController() if self.robot_name in MPC_CBF_AGENTS else None
         self.data_saver = RobotDataSaver(self.robot_name)
 
         # Save configuration files
@@ -113,12 +115,16 @@ class Turtlebot:
         vel_msg.linear.z = 0.0
 
         vel_msg.angular.x = 0.0
-        vel_msg.angular.y = 0.0    
-        vel_msg.angular.z = 0      
-        
-        # Publish multiple times to ensure it is received
+        vel_msg.angular.y = 0.0
+        vel_msg.angular.z = 0
+
+        # Publish multiple times to ensure it is received.
+        # Guard against the publisher already being closed (e.g. on ROS shutdown).
         for _ in range(3):
-            self.vel_pub.publish(vel_msg)
+            try:
+                self.vel_pub.publish(vel_msg)
+            except Exception:
+                break
             time.sleep(0.1)
 
     def sim_pose_callback(self, data):
@@ -197,7 +203,10 @@ class Turtlebot:
         vel_msg = Twist()
         vel_msg.linear.x = lin_vel
         vel_msg.angular.z = ang_vel
-        self.vel_pub.publish(vel_msg)
+        try:
+            self.vel_pub.publish(vel_msg)
+        except Exception:
+            return
         self.commanded_velocity = lin_vel
         # print(f'published: {vel_msg}')
         
@@ -291,7 +300,7 @@ class Turtlebot:
     def run(self):
         ego_pos = self.info['position']
         if (abs(ego_pos[0]) > 2.8 or abs(ego_pos[1]) > 2.8 or (ego_pos[1]) < -2):
-            # print(f"{self.robot_name} reached goal at {ego_pos}, stopping.")
+            print(f"{self.robot_name} BOUNDARY STOP at pos={[round(v,3) for v in ego_pos]}")
             self.move(0, 0)
             return
 
@@ -323,6 +332,15 @@ class Turtlebot:
             if self.goal_heading is None:
                 self.goal_heading = self.info['heading']
             v_lin, ang_vel = self.nhorca_controller.compute_velocity(self.info, self.neighbors, self.goal_heading)
+            self.data_saver.save_data(self.info, self.neighbors, sens_neighbors, self.nod_controller, v_lin)
+            self.move(v_lin, ang_vel)
+            self.rate.sleep()
+            return
+
+        if self.robot_name in MPC_CBF_AGENTS:
+            if self.goal_heading is None:
+                self.goal_heading = self.info['heading']
+            v_lin, ang_vel = self.mpc_cbf_controller.compute_velocity(self.info, self.neighbors, self.goal_heading)
             self.data_saver.save_data(self.info, self.neighbors, sens_neighbors, self.nod_controller, v_lin)
             self.move(v_lin, ang_vel)
             self.rate.sleep()
