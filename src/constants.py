@@ -5,7 +5,7 @@ HUMAN_NAMES = {"crnr_x0_y0", "crnr_x0_y1", "crnr_x1_y0", "crnr_x1_y1"}
 ROGUE_AGENTS = set()
 ORCA_AGENTS = set()
 ORCA_DD_AGENTS = {}
-MPC_CBF_AGENTS = {"tb6", "tb9"}
+MPC_CBF_AGENTS = {"tb9", "tb6"}
 
 TRIAL_ID = "ID_3_4H"
 TRIAL_SEED = "1"
@@ -66,6 +66,7 @@ class NodConfig:
         DT = 0.1          # time step (s)
         GAMMA = 0.3       # CBF decay rate in (0,1]; smaller = more conservative / earlier avoidance
         OMEGA_MAX = 1.82  # TurtleBot3 Waffle max angular velocity (rad/s)
-        Q_V = 1.0         # stage cost: speed deviation weight
-        Q_W = 0.1         # stage cost: angular velocity weight
-        Q_THETA = 5.0     # terminal cost: heading alignment weight
+        A_MAX = 0.5       # max acceleration magnitude (m/s^2)
+        Q_V = 1.0         # stage cost: velocity deviation weight
+        Q_W = 0.1         # stage cost: acceleration weight
+        Q_THETA = 5.0     # terminal cost: velocity alignment weight
