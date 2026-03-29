@@ -23,6 +23,7 @@ class NodController:
         self.pairwise_cooperation_attention = defaultdict(float)
         self.previous_pairwise_phi = defaultdict(float)
         self.previous_vj = defaultdict(float)
+        self.neighbor_ever_moved = defaultdict(bool)
 
 
     def update_opinion(self, ego_info: dict, neighbors_dict: dict, current_time: float):
@@ -62,6 +63,11 @@ class NodController:
         for neighbor in sensed_neighbors:
             neighbor_info = neighbors_dict[neighbor]
             time_step = 0.1
+
+            if np.linalg.norm(neighbor_info['velocity']) > 0.05:
+                self.neighbor_ever_moved[neighbor] = True
+            if not self.neighbor_ever_moved[neighbor]:
+                continue
 
             # relative vectors
             vij_vec = np.array(neighbor_info['velocity']) - np.array(ego_info['velocity'])
@@ -120,7 +126,7 @@ class NodController:
                 u_val, score_val = y
                 u_dot = -u_val + expit((D_SAFE - d_min))
                 score_dot = -d * score_val + math.tanh(u_val * score_val + bj)
-                return [u_dot/NodConfig.dynamics.TAU_Z, score_dot/NodConfig.dynamics.TAU_Z]
+                return [u_dot/NodConfig.dynamics.TAU_COOPERATION, score_dot/NodConfig.dynamics.TAU_COOPERATION]
 
             sol = solve_ivp(
                 _cooperation_coupled_rhs,
@@ -211,9 +217,12 @@ class NodController:
         r0 = np.array(neighbor_pos) - np.array(ego_pos)  # relative position
         w = np.array(neighbor_info['velocity'])-np.array(ego_info['velocity'])    # relative velocity
         a = float(np.dot(w, w))
-        b = 2*float(np.dot(r0, w))
-        c = float(np.dot(r0, r0)) - 1.*(NodConfig.neighbors.R_PRED)**2
-        conflict_intensity = 1*expit(1*(b**2/(4*max(a,EPS)) - c))
+        if np.sqrt(a) < 0.05:   # relative speed too low to compute geometry reliably
+            conflict_intensity = 0.0
+        else:
+            b = 2*float(np.dot(r0, w))
+            c = float(np.dot(r0, r0)) - 1.*(NodConfig.neighbors.R_PRED)**2
+            conflict_intensity = 1*expit(1*(b**2/(4*a) - c))
 
         u_ij = conflict_intensity
         # att_prec_ij = self.pairwise_u[neighbor_info['name']]
@@ -294,7 +303,7 @@ class NodController:
             last_u_eff[0] = u_eff
             return [dz, du]
 
-        sol = solve_ivp(fast_rhs, [0.0, 0.5], [z0, u0], rtol=1e-4, atol=1e-4)
+        sol = solve_ivp(fast_rhs, [0.0, horizon_s], [z0, u0], rtol=1e-4, atol=1e-4)
         z_end = float(sol.y[0, -1])
         u_end = float(last_u_eff[0])
         return z_end, u_end

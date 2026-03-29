@@ -36,6 +36,7 @@ class Turtlebot:
         self.prev_time = None
         self.commanded_velocity = 0.0
         self.goal_heading = None  # set on first ORCA step
+        self.heading_error_integral = 0.0
         self.info = {
             "name": self.robot_name,
             "position": [0.0, 0.0],
@@ -245,6 +246,13 @@ class Turtlebot:
         # Update neighbors dict
         self.neighbors[human_name] = {"name": human_name, "position": [x, y], "velocity": [vx, vy], "heading": yaw}
 
+    def _init_goal_heading(self):
+        x, y = self.info['position']
+        if abs(x) >= abs(y):
+            self.goal_heading = 0.0 if x < 0 else math.pi
+        else:
+            self.goal_heading = -math.pi / 2 if y > 0 else math.pi / 2
+
     def _get_v_commanded(self, v_target):
         v_current = np.linalg.norm(self.info["velocity"])
 
@@ -270,7 +278,7 @@ class Turtlebot:
 
     def _compute_orca_velocity(self):
         if self.goal_heading is None:
-            self.goal_heading = self.info['heading']
+            self._init_goal_heading()
 
         sim = rvo2.PyRVOSimulator(
             0.1,                               # time step
@@ -299,7 +307,7 @@ class Turtlebot:
 
     def run(self):
         ego_pos = self.info['position']
-        if (abs(ego_pos[0]) > 2.8 or abs(ego_pos[1]) > 2.8 or (ego_pos[1]) < -2):
+        if (abs(ego_pos[0]) > 2.85 or abs(ego_pos[1]) > 2.85 or (ego_pos[1]) < -2):
             # print(f"{self.robot_name} BOUNDARY STOP at pos={[round(v,3) for v in ego_pos]}")
             self.move(0, 0)
             return
@@ -346,11 +354,28 @@ class Turtlebot:
             self.rate.sleep()
             return
 
+        if self.goal_heading is None:
+            self._init_goal_heading()
+
         self.target_speed = self.nod_controller.update_opinion(self.info, self.neighbors, time.time())
         self.data_saver.save_data(self.info, self.neighbors, sens_neighbors, self.nod_controller, self.target_speed)
         # print(f"{self.robot_name} target speed: {self.target_speed:.3f}")
         v_command = self._get_v_commanded(self.target_speed)
-        self.move(v_command, 0)
+
+        heading = self.info['heading']
+        heading_error = math.atan2(math.sin(self.goal_heading - heading),
+                                   math.cos(self.goal_heading - heading))
+        self.heading_error_integral += heading_error * 0.1  # dt = 0.1s
+        self.heading_error_integral = math.copysign(     # anti-windup clamp
+            min(abs(self.heading_error_integral), NodConfig.mpc_cbf.OMEGA_MAX / NodConfig.kin.KAPPA_ANG_I),
+            self.heading_error_integral)
+        ang_vel = math.copysign(
+            min(abs(NodConfig.kin.KAPPA_ANG * heading_error
+                    + NodConfig.kin.KAPPA_ANG_I * self.heading_error_integral),
+                NodConfig.mpc_cbf.OMEGA_MAX),
+            heading_error + NodConfig.kin.KAPPA_ANG_I / NodConfig.kin.KAPPA_ANG * self.heading_error_integral)
+
+        self.move(v_command, ang_vel)
 
         self.rate.sleep()
 
