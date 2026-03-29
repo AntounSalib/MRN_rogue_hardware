@@ -338,7 +338,7 @@ class Turtlebot:
 
         if self.robot_name in ORCA_DD_AGENTS:
             if self.goal_heading is None:
-                self.goal_heading = self.info['heading']
+                self._init_goal_heading()
             v_lin, ang_vel = self.nhorca_controller.compute_velocity(self.info, self.neighbors, self.goal_heading)
             self.data_saver.save_data(self.info, self.neighbors, sens_neighbors, self.nod_controller, v_lin)
             self.move(v_lin, ang_vel)
@@ -347,7 +347,7 @@ class Turtlebot:
 
         if self.robot_name in MPC_CBF_AGENTS:
             if self.goal_heading is None:
-                self.goal_heading = self.info['heading']
+                self._init_goal_heading()
             v_lin, ang_vel = self.mpc_cbf_controller.compute_velocity(self.info, self.neighbors, self.goal_heading)
             self.data_saver.save_data(self.info, self.neighbors, sens_neighbors, self.nod_controller, v_lin)
             self.move(v_lin, ang_vel)

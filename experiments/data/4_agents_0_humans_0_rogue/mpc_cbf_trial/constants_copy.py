@@ -2,10 +2,10 @@ import numpy as np
 
 ROBOT_NAMES = ("tb1", "tb2", "tb3", "tb4", "tb5", "tb6", "tb7", "tb8", "tb9", "tb10", "tb11", "tb12")
 HUMAN_NAMES = {"crnr_x0_y0", "crnr_x0_y1", "crnr_x1_y0", "crnr_x1_y1"}
-ROGUE_AGENTS = {"tb2", "tb6"}
-ORCA_AGENTS = {}
+ROGUE_AGENTS = {}
+ORCA_AGENTS = set()
 ORCA_DD_AGENTS = {}
-MPC_CBF_AGENTS = {}
+MPC_CBF_AGENTS = {"tb1", "tb2", "tb3", "tb6"}
 
 def get_agent_type(name):
     if name in ROGUE_AGENTS:
@@ -19,8 +19,8 @@ def get_agent_type(name):
     return "NOD"
 
 
-TRIAL_ID = "4_agents_0_humans_2_rogue"
-TRIAL_SEED = "nod_cooperation_trial"
+TRIAL_ID = "4_agents_0_humans_0_rogue"
+TRIAL_SEED = "mpc_cbf_trial"
 
 
 EPS = 1e-5
