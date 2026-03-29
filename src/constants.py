@@ -5,7 +5,7 @@ HUMAN_NAMES = {"crnr_x0_y0", "crnr_x0_y1", "crnr_x1_y0", "crnr_x1_y1"}
 ROGUE_AGENTS = set()
 ORCA_AGENTS = set()
 ORCA_DD_AGENTS = {}
-MPC_CBF_AGENTS = {"tb9", "tb6"}
+MPC_CBF_AGENTS = {}
 
 TRIAL_ID = "ID_3_4H"
 TRIAL_SEED = "1"

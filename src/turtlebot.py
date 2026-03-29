@@ -300,7 +300,7 @@ class Turtlebot:
     def run(self):
         ego_pos = self.info['position']
         if (abs(ego_pos[0]) > 2.8 or abs(ego_pos[1]) > 2.8 or (ego_pos[1]) < -2):
-            print(f"{self.robot_name} BOUNDARY STOP at pos={[round(v,3) for v in ego_pos]}")
+            # print(f"{self.robot_name} BOUNDARY STOP at pos={[round(v,3) for v in ego_pos]}")
             self.move(0, 0)
             return
 
