@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-from constants import TRIAL_ID, TRIAL_SEED, NodConfig, ROBOT_NAMES, HUMAN_NAMES
+from constants import TRIAL_ID, TRIAL_SEED, NodConfig, ROBOT_NAMES, HUMAN_NAMES, get_agent_type
 
 # ROS Libraries/Packages
 import rospy
@@ -21,9 +21,9 @@ import numpy as np
 # ==============  PATH AND FOLDER MANAGEMENT  ===============
 # ===========================================================
 
-BASE_PATH = os.path.expanduser("~/catkin_ws/src/MRN_rogue_hardware/data")
+BASE_PATH = os.path.expanduser("~/catkin_ws/src/MRN_rogue_hardware/experiments/data")
 
-TRIAL_PATH = os.path.join(BASE_PATH, f"ID{TRIAL_ID}", f"trial_{TRIAL_SEED}")
+TRIAL_PATH = os.path.join(BASE_PATH, f"{TRIAL_ID}", f"{TRIAL_SEED}")
 os.makedirs(TRIAL_PATH, exist_ok=True)
 
 
@@ -44,6 +44,16 @@ class ImportsDataSaver:
         if os.path.exists(src_path) and not os.path.exists(dst_path):
             print("SAVED CONSTANTS FILE")
             shutil.copy(src_path, dst_path)
+
+        # Save agent type for each robot
+        types_path = os.path.join(self.filepath, "agent_types.csv")
+        if not os.path.exists(types_path):
+            with open(types_path, "w", newline="") as f:
+                w = csv.writer(f)
+                w.writerow(["robot", "agent_type"])
+                for name in ROBOT_NAMES:
+                    w.writerow([name, get_agent_type(name)])
+            print("SAVED AGENT TYPES FILE")
 
 # ===========================================================
 # ==================   HUMAN DATA SAVER   ===================

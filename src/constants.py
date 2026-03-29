@@ -7,8 +7,20 @@ ORCA_AGENTS = set()
 ORCA_DD_AGENTS = {}
 MPC_CBF_AGENTS = {}
 
-TRIAL_ID = "ID_3_4H"
-TRIAL_SEED = "1"
+def get_agent_type(name):
+    if name in ROGUE_AGENTS:
+        return "ROGUE"
+    if name in ORCA_DD_AGENTS:
+        return "ORCA_DD"
+    if name in MPC_CBF_AGENTS:
+        return "MPC_CBF"
+    if name in ORCA_AGENTS:
+        return "ORCA"
+    return "NOD"
+
+
+TRIAL_ID = "NOD_COOPERATION_NON_HUMAN"
+TRIAL_SEED = "test_seed"
 
 
 EPS = 1e-5
