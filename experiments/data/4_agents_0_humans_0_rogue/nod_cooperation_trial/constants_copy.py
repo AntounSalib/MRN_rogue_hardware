@@ -2,8 +2,8 @@ import numpy as np
 
 ROBOT_NAMES = ("tb1", "tb2", "tb3", "tb4", "tb5", "tb6", "tb7", "tb8", "tb9", "tb10", "tb11", "tb12")
 HUMAN_NAMES = {"crnr_x0_y0", "crnr_x0_y1", "crnr_x1_y0", "crnr_x1_y1"}
-ROGUE_AGENTS = set()
-ORCA_AGENTS = set()
+ROGUE_AGENTS = {}
+ORCA_AGENTS = {}
 ORCA_DD_AGENTS = {}
 MPC_CBF_AGENTS = {}
 
@@ -42,7 +42,8 @@ class NodConfig:
         K_U_S = 0
         OPINION_DECAY = 1
         ATTENTION_DECAY = 1
-        TAU_Z = 0.01
+        TAU_Z = 0.5
+        TAU_COOPERATION = 1
         TIMING_TAU_U_RELAX = TAU_Z
         TAU_Z_RELAX = TAU_Z
         ITERATIONS_OD = 50
@@ -55,10 +56,11 @@ class NodConfig:
 
     class kin:
         V_NOMINAL = 0.35
-        V_ROGUE = 0.2
+        V_ROGUE = 0.35
         KAPPA_Z = 5.0
         KAPPA_V = 5.0
         KAPPA_ANG = 2.0
+        KAPPA_ANG_I = 0.5
         V_MAX = 0.5
 
     class cooperation:

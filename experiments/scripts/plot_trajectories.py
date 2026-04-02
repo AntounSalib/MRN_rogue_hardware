@@ -64,43 +64,52 @@ print(f"Loaded robots: {list(robot_data.keys())}")
 # ── colour palette ─────────────────────────────────────────────────────────────
 colors = cm.tab10(np.linspace(0, 1, len(robot_data)))
 
+# ── centre-of-gravity normalisation (plot only, data files unchanged) ──────────
+x_offset = np.mean([df["x"].values[0] for df in robot_data.values()])
+y_offset = np.mean([df["y"].values[0] for df in robot_data.values()])
+
 # ── static trajectory plot ─────────────────────────────────────────────────────
-fig, ax = plt.subplots(figsize=(8, 8))
+ROBOT_RADIUS = 0.17   # visual footprint radius (m)
+N_GHOST      = 20     # ghost circles per robot trail
+
+fig, ax = plt.subplots(figsize=(7, 7))
 ax.set_aspect("equal")
 ax.set_xlabel("x (m)")
 ax.set_ylabel("y (m)")
 ax.set_title(f"Robot Trajectories\n{trial_name}")
 ax.grid(True, linestyle="--", alpha=0.4)
 
-all_t = np.concatenate([df["t"].values for df in robot_data.values()])
-t_global_min, t_global_max = all_t.min(), all_t.max()
-
 for (robot_name, df), color in zip(robot_data.items(), colors):
-    x = df["x"].values
-    y = df["y"].values
-    t = df["t"].values
+    x = df["x"].values - x_offset
+    y = df["y"].values - y_offset
 
-    points   = np.array([x, y]).T.reshape(-1, 1, 2)
-    segments = np.concatenate([points[:-1], points[1:]], axis=1)
-    norm     = plt.Normalize(t_global_min, t_global_max)
-    lc = LineCollection(segments, cmap="viridis", norm=norm, linewidth=2, alpha=0.85)
-    lc.set_array(t[:-1])
-    ax.add_collection(lc)
+    # Fading ghost circles: transparent at start, opaque toward end
+    indices = np.linspace(0, len(x) - 1, N_GHOST, dtype=int)
+    for k, idx in enumerate(indices):
+        alpha = 0.03 + 0.28 * (k / (N_GHOST - 1))
+        circle = plt.Circle((x[idx], y[idx]), ROBOT_RADIUS,
+                             color=color, alpha=alpha, zorder=2)
+        ax.add_patch(circle)
 
-    ax.plot(x[0], y[0], "o", color=color, markersize=10, zorder=5,
-            label=f"{robot_name} start")
-    ax.annotate(robot_name, (x[0], y[0]), textcoords="offset points",
-                xytext=(6, 6), fontsize=9, color=color, fontweight="bold")
-    ax.plot(x[-1], y[-1], "s", color=color, markersize=8, zorder=5)
+    # Trajectory centre-line
+    ax.plot(x, y, "-", color=color, linewidth=1.5, alpha=0.9, zorder=3,
+            label=robot_name)
+
+    # Start: small filled dot
+    ax.plot(x[0], y[0], "o", color=color, markersize=4, zorder=5)
+
+    # End: bold circle outline + X
+    end_circ = plt.Circle((x[-1], y[-1]), ROBOT_RADIUS,
+                           color=color, fill=False, linewidth=2.5, zorder=6)
+    ax.add_patch(end_circ)
+    r = ROBOT_RADIUS * 0.65
+    ax.plot([x[-1] - r, x[-1] + r], [y[-1] + r, y[-1] - r],
+            color=color, linewidth=2, zorder=7)
+    ax.plot([x[-1] - r, x[-1] + r], [y[-1] - r, y[-1] + r],
+            color=color, linewidth=2, zorder=7)
 
 ax.autoscale()
 ax.legend(loc="upper right", fontsize=8)
-
-sm = plt.cm.ScalarMappable(cmap="viridis")
-sm.set_clim(t_global_min, t_global_max)
-cbar = fig.colorbar(sm, ax=ax, shrink=0.6, pad=0.02)
-cbar.set_label("time (s)")
-
 plt.tight_layout()
 static_path = os.path.join(plot_dir, "trajectories_static.png")
 fig.savefig(static_path, dpi=150)
@@ -119,8 +128,8 @@ t_max = max(df["t"].values[-1] for df in robot_data.values())
 N_FRAMES = 120
 t_grid = np.linspace(t_min, t_max, N_FRAMES)
 
-all_x = np.concatenate([df["x"].values for df in robot_data.values()])
-all_y = np.concatenate([df["y"].values for df in robot_data.values()])
+all_x = np.concatenate([df["x"].values for df in robot_data.values()]) - x_offset
+all_y = np.concatenate([df["y"].values for df in robot_data.values()]) - y_offset
 margin = 0.5
 ax2.set_xlim(all_x.min() - margin, all_x.max() + margin)
 ax2.set_ylim(all_y.min() - margin, all_y.max() + margin)
@@ -141,8 +150,8 @@ ax2.legend(loc="upper right", fontsize=8)
 
 def _interp(df, t_query):
     t = df["t"].values
-    x = np.interp(t_query, t, df["x"].values, left=np.nan, right=np.nan)
-    y = np.interp(t_query, t, df["y"].values, left=np.nan, right=np.nan)
+    x = np.interp(t_query, t, df["x"].values, left=np.nan, right=np.nan) - x_offset
+    y = np.interp(t_query, t, df["y"].values, left=np.nan, right=np.nan) - y_offset
     return x, y
 
 
@@ -164,7 +173,7 @@ def update(frame_idx):
             lines[robot_name].set_data([], [])
             dots[robot_name].set_data([], [])
         else:
-            lines[robot_name].set_data(df["x"].values[mask], df["y"].values[mask])
+            lines[robot_name].set_data(df["x"].values[mask] - x_offset, df["y"].values[mask] - y_offset)
             cx, cy = _interp(df, t_now)
             if not np.isnan(cx):
                 dots[robot_name].set_data([cx], [cy])
@@ -210,4 +219,30 @@ if "tb6" in robot_data:
 else:
     print("tb6 data not available, skipping cooperation plot.")
 
-plt.show()
+# ── tb1 cooperation with tb2 ───────────────────────────────────────────────────
+if "tb1" in robot_data:
+    df1 = robot_data["tb1"]
+    t1  = df1["t"].values - df1["t"].values[0]
+
+    fig4, ax4 = plt.subplots(figsize=(9, 4))
+    ax4.set_xlabel("time (s)")
+    ax4.set_ylabel("cooperation")
+    ax4.set_title(f"tb1 Cooperation → tb2\n{trial_name}")
+    ax4.set_ylim(-0.05, 1.05)
+    ax4.grid(True, linestyle="--", alpha=0.4)
+
+    col = "p_coop_tb2"
+    if col in df1.columns:
+        ax4.plot(t1, df1[col].values, color="tab:green", linewidth=1.8,
+                 label="tb1 → tb2")
+    else:
+        print(f"  Warning: column {col} not found in tb1 data")
+
+    ax4.legend()
+    plt.tight_layout()
+    coop1_path = os.path.join(plot_dir, "tb1_cooperation_tb2.png")
+    fig4.savefig(coop1_path, dpi=150)
+    print(f"Saved: {coop1_path}")
+else:
+    print("tb1 data not available, skipping tb1 cooperation plot.")
+
