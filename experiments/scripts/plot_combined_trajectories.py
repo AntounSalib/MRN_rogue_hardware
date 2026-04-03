@@ -47,7 +47,12 @@ def load_trial(trial_dir):
 
 
 def draw_trajectories(ax, robot_data, title):
-    colors = cm.tab10(np.linspace(0, 1, len(robot_data)))
+    colors = [
+        "#1f77b4",  # blue
+        "#ff7f0e",  # orange
+        "#2ca02c",  # green
+        "#9467bd",  # purple
+    ][:len(robot_data)]
 
     x_offset = np.mean([df["x"].values[0] for df in robot_data.values()])
     y_offset = np.mean([df["y"].values[0] for df in robot_data.values()])
@@ -87,7 +92,8 @@ def draw_trajectories(ax, robot_data, title):
                 color=color, linewidth=2, zorder=7)
 
     ax.set_aspect("equal", adjustable="datalim")
-    ax.set_title(title, fontsize=11, fontweight="normal", pad=6)
+    ax.set_title(title, fontsize=18, fontweight="normal", pad=6)
+    ax.tick_params(labelsize=15)
     ax.grid(True, linestyle="--", alpha=0.4)
     ax.autoscale()
     ax.legend().remove()
@@ -102,14 +108,14 @@ for (row, col), ax, trial_name in zip(np.ndindex(2, 2), axes.flat, trial_names):
     trial_dir  = os.path.join(SCENARIO_DIR, trial_name)
     robot_data = load_trial(trial_dir)
     if not robot_data:
-        ax.set_title(f"{TRIAL_LABELS[trial_name]}\n(no data)", fontsize=11, fontweight="normal")
+        ax.set_title(f"{TRIAL_LABELS[trial_name]}\n(no data)", fontsize=15, fontweight="normal")
         ax.axis("off")
         continue
     draw_trajectories(ax, robot_data, TRIAL_LABELS[trial_name])
     if col == 0:
-        ax.set_ylabel("y (m)", fontsize=9)
+        ax.set_ylabel("y (m)", fontsize=15)
     if row == 1:
-        ax.set_xlabel("x (m)", fontsize=9)
+        ax.set_xlabel("x (m)", fontsize=15)
 
 # Unify axis limits across all subplots and make them square so
 # equal-aspect ratio leaves no padding
