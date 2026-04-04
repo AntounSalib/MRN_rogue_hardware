@@ -246,3 +246,30 @@ if "tb1" in robot_data:
 else:
     print("tb1 data not available, skipping tb1 cooperation plot.")
 
+# ── tb3 cooperation with tb6 ───────────────────────────────────────────────────
+if "tb3" in robot_data:
+    df3 = robot_data["tb3"]
+    t3  = df3["t"].values - df3["t"].values[0]
+
+    fig5, ax5 = plt.subplots(figsize=(9, 4))
+    ax5.set_xlabel("time (s)")
+    ax5.set_ylabel("cooperation")
+    ax5.set_title(f"tb3 Cooperation → tb6\n{trial_name}")
+    ax5.set_ylim(-1.05, 1.05)
+    ax5.grid(True, linestyle="--", alpha=0.4)
+
+    col = "p_coop_tb6"
+    if col in df3.columns:
+        ax5.plot(t3, df3[col].values, color="tab:purple", linewidth=1.8,
+                 label="tb3 → tb6")
+    else:
+        print(f"  Warning: column {col} not found in tb3 data")
+
+    ax5.legend()
+    plt.tight_layout()
+    coop3_path = os.path.join(plot_dir, "tb3_cooperation_tb6.png")
+    fig5.savefig(coop3_path, dpi=150)
+    print(f"Saved: {coop3_path}")
+else:
+    print("tb3 data not available, skipping tb3 cooperation plot.")
+

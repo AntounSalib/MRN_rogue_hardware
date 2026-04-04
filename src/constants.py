@@ -20,7 +20,15 @@ def get_agent_type(name):
 
 
 TRIAL_ID = "4_agents_0_humans_2_rogue"
-TRIAL_SEED = "nod_cooperation_test_7"
+TRIAL_SEED = "nod_cooperation_test_2"
+
+RESET_TO_START = True
+START_POSITIONS = {
+    "tb1": (2,  0.8,  -3.1416),
+    "tb2": (0.2,  3,  -1.5708),
+    "tb3": (-0.2, -1,  1.5708),
+    "tb6": (-2,  1.2,  0.0),
+}
 
 
 EPS = 1e-5

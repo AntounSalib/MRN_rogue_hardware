@@ -16,7 +16,7 @@ from nav_msgs.msg import Odometry
 from tf.transformations import euler_from_quaternion
 from data_saver import RobotDataSaver, ImportsDataSaver
 from neighbors import sensed_neighbors
-from constants import ROBOT_NAMES, EPS, NodConfig, ROGUE_AGENTS, ORCA_AGENTS, ORCA_DD_AGENTS, MPC_CBF_AGENTS, HUMAN_NAMES, D_SAFE
+from constants import ROBOT_NAMES, EPS, NodConfig, ROGUE_AGENTS, ORCA_AGENTS, ORCA_DD_AGENTS, MPC_CBF_AGENTS, HUMAN_NAMES, D_SAFE, RESET_TO_START, START_POSITIONS
 from orca_dd_controller import NHORCAController
 from mpc_cbf_controller import MPCCBFController
 import rvo2
@@ -37,6 +37,7 @@ class Turtlebot:
         self.commanded_velocity = 0.0
         self.goal_heading = None  # set on first ORCA step
         self.heading_error_integral = 0.0
+        self.reset_position_reached = False
         self.info = {
             "name": self.robot_name,
             "position": [0.0, 0.0],
@@ -305,9 +306,77 @@ class Turtlebot:
         sim.doStep()
         return sim.getAgentVelocity(ego_id)
 
+    def _run_reset(self):
+        if self.robot_name not in START_POSITIONS:
+            self.move(0, 0)
+            self.rate.sleep()
+            return
+
+        goal_x, goal_y, goal_heading = START_POSITIONS[self.robot_name]
+        goal = np.array([goal_x, goal_y])
+        pos  = np.array(self.info['position'])
+        diff = goal - pos
+        dist = float(np.linalg.norm(diff))
+
+        if dist < 0.15:
+            self.reset_position_reached = True
+
+        if self.reset_position_reached:
+            # Position reached — spin to target heading
+            heading_error = math.atan2(math.sin(goal_heading - self.info['heading']),
+                                       math.cos(goal_heading - self.info['heading']))
+            if abs(heading_error) < 0.05:
+                self.move(0, 0)
+            else:
+                ang_vel = math.copysign(
+                    min(abs(NodConfig.kin.KAPPA_ANG * heading_error), NodConfig.mpc_cbf.OMEGA_MAX),
+                    heading_error)
+                self.move(0, ang_vel)
+            self.rate.sleep()
+            return
+
+        # Use ORCA with goal as preferred velocity direction
+        import rvo2
+        sim = rvo2.PyRVOSimulator(
+            0.1,
+            NodConfig.neighbors.SENSING_RANGE,
+            10, 2.0, 2.0,
+            D_SAFE / 2.0,
+            NodConfig.kin.V_MAX,
+        )
+        ego_id = sim.addAgent(tuple(pos))
+        sim.setAgentVelocity(ego_id, tuple(self.info['velocity']))
+        for neighbor_info in self.neighbors.values():
+            n_id = sim.addAgent(tuple(neighbor_info['position']))
+            sim.setAgentVelocity(n_id, tuple(neighbor_info['velocity']))
+            sim.setAgentPrefVelocity(n_id, (0.0, 0.0))
+
+        pref_speed = min(NodConfig.kin.V_NOMINAL, dist * 2.0)
+        pref_vel   = (diff / dist) * pref_speed
+        sim.setAgentPrefVelocity(ego_id, tuple(pref_vel))
+        sim.doStep()
+        orca_vel = sim.getAgentVelocity(ego_id)
+
+        v_lin = float(np.clip(math.hypot(orca_vel[0], orca_vel[1]), 0.0, NodConfig.kin.V_MAX))
+        desired_heading = math.atan2(diff[1], diff[0])
+        heading = self.info['heading']
+        heading_error = math.atan2(math.sin(desired_heading - heading),
+                                   math.cos(desired_heading - heading))
+        ang_vel = math.copysign(
+            min(abs(NodConfig.kin.KAPPA_ANG * heading_error), NodConfig.mpc_cbf.OMEGA_MAX),
+            heading_error)
+        self.move(v_lin, ang_vel)
+        self.rate.sleep()
+
     def run(self):
+        if RESET_TO_START:
+            self._run_reset()
+            return
+
+
+
         ego_pos = self.info['position']
-        if (abs(ego_pos[0]) > 2.85 or abs(ego_pos[1]) > 2.85 or (ego_pos[1]) < -2):
+        if (abs(ego_pos[0]) > 2.85 or ego_pos[1] > 3.2 or ego_pos[1] < -2.85):
             # print(f"{self.robot_name} BOUNDARY STOP at pos={[round(v,3) for v in ego_pos]}")
             self.move(0, 0)
             return
