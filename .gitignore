@@ -3,3 +3,9 @@ __pycache__/
 *.pyc
 *.pyo
 *.pyd
+
+# Experiment data
+experiments/data/
+
+# macOS
+.DS_Store
