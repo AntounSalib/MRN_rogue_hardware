@@ -107,9 +107,14 @@ class NodController:
             
             
             latest_cooperation_score = self.pairwise_cooperation[neighbor]
-            x = math.tanh(10*np.linalg.norm(neighbor_info['velocity']))
-            y = math.tanh(abs(delta_Phi))     
-            g = math.tanh(1*delta_vj)  
+            vj_scalar = float(np.linalg.norm(neighbor_info['velocity']))
+            # x = math.tanh(10*vj_scalar)  # old
+            x = float(expit(10*vj_scalar))
+            y = math.tanh(abs(delta_Phi))
+            # delta_vj as acceleration (reference uses aj, not speed difference)
+            dt_coop = time_step
+            # g = math.tanh(1*delta_vj)  # old: speed difference
+            g = math.tanh(1*(delta_vj / max(dt_coop, EPS)))
             # if abs(delta_Phi) < np.deg2rad(5):   
             #     (delta_Phi) = -np.deg2rad(50)
             
@@ -180,12 +185,14 @@ class NodController:
             P = P_time * P_distance
 
             # compute gate
+
             if NodConfig.cooperation.COOPERATION_LAYER_ON and self.pairwise_cooperation[neighbor] < NodConfig.cooperation.COOPERATION_THRESHOLD:
                 delta_t = ti_cooperation - tj
                 # print(f"robot: {ego_info['name']}, neighbor: {neighbor_info['name']}, cooperation: {self.pairwise_cooperation[neighbor]} using cooperation delta_t: {delta_t}")
             else:
                 delta_t = ti - tj
             G = self._compute_gate(delta_t)
+            P = self._gate_induced_pressure([P], [G])[0]
 
             U = self._compute_pairwise_attention(ego_info, neighbor_info)
 
@@ -222,7 +229,8 @@ class NodController:
         else:
             b = 2*float(np.dot(r0, w))
             c = float(np.dot(r0, r0)) - 1.*(NodConfig.neighbors.R_PRED)**2
-            conflict_intensity = 1*expit(1*(b**2/(4*a) - c))
+            # conflict_intensity = 1*expit(1*(b**2/(4*a) - c))
+            conflict_intensity = 1*expit(1*(b**2/(4*max(a, EPS)) - c))
 
         u_ij = conflict_intensity
         # att_prec_ij = self.pairwise_u[neighbor_info['name']]
@@ -271,12 +279,13 @@ class NodController:
         P = np.asarray(Pis, float)
         G = np.asarray(Gis, float)
         P_abs = abs(P)
-        max_idx = int(np.argmax(P_abs))
-        max_sign = -1.0 if P[max_idx] < 0.0 else 1.0
+        # max_idx = int(np.argmax(P_abs))
+        # max_sign = -1.0 if P[max_idx] < 0.0 else 1.0
         w = np.exp((P_abs - np.max(P_abs))/NodConfig.pressure.TEMP_SM)  # avoid overflow
         w /= (np.sum(w) + 1e-9)  # normalize to sum to 1
-        a_sum = float(max_sign * np.sum(Uis * (w * G)))
-        return a_sum,np.sum(P)
+        # a_sum = float(max_sign * np.sum(Uis * (w * G)))
+        a_sum = float(np.sum(Uis * w * G))
+        return a_sum, np.sum(P)
     
     def _nod_update(self, z, u, a_sum, sumP) -> Tuple[float, float, float]:        
         if a_sum is None:

@@ -6,6 +6,7 @@ ROGUE_AGENTS = {"tb2", "tb6"}
 ORCA_AGENTS = {}
 ORCA_DD_AGENTS = {}
 MPC_CBF_AGENTS = {}
+ACTIVE_ROBOTS = {"tb1", "tb2", "tb3", "tb6"}
 
 def get_agent_type(name):
     if name in ROGUE_AGENTS:
@@ -20,14 +21,14 @@ def get_agent_type(name):
 
 
 TRIAL_ID = "4_agents_0_humans_2_rogue"
-TRIAL_SEED = "nod_cooperation_test_2"
+TRIAL_SEED = "nod_cooperation_test_3"
 
-RESET_TO_START = True
+RESET_TO_START = False
 START_POSITIONS = {
-    "tb1": (2,  0.8,  -3.1416),
-    "tb2": (0.2,  3,  -1.5708),
-    "tb3": (-0.2, -1,  1.5708),
-    "tb6": (-2,  1.2,  0.0),
+    "tb1": (2,  0.75,  -3.1416),
+    "tb2": (0.25,  3,  -1.5708),
+    "tb3": (-0.25, -1,  1.5708),
+    "tb6": (-2,  1.25,  0.0),
 }
 
 
@@ -51,7 +52,7 @@ class NodConfig:
         OPINION_DECAY = 1
         ATTENTION_DECAY = 1
         TAU_Z = 0.5
-        TAU_COOPERATION = 0.5
+        TAU_COOPERATION = 0.1
         TIMING_TAU_U_RELAX = TAU_Z
         TAU_Z_RELAX = TAU_Z
         ITERATIONS_OD = 50

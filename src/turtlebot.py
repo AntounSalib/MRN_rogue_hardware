@@ -16,7 +16,7 @@ from nav_msgs.msg import Odometry
 from tf.transformations import euler_from_quaternion
 from data_saver import RobotDataSaver, ImportsDataSaver
 from neighbors import sensed_neighbors
-from constants import ROBOT_NAMES, EPS, NodConfig, ROGUE_AGENTS, ORCA_AGENTS, ORCA_DD_AGENTS, MPC_CBF_AGENTS, HUMAN_NAMES, D_SAFE, RESET_TO_START, START_POSITIONS
+from constants import ROBOT_NAMES, EPS, NodConfig, ROGUE_AGENTS, ORCA_AGENTS, ORCA_DD_AGENTS, MPC_CBF_AGENTS, HUMAN_NAMES, D_SAFE, RESET_TO_START, START_POSITIONS, ACTIVE_ROBOTS
 from orca_dd_controller import NHORCAController
 from mpc_cbf_controller import MPCCBFController
 import rvo2
@@ -347,9 +347,12 @@ class Turtlebot:
         ego_id = sim.addAgent(tuple(pos))
         sim.setAgentVelocity(ego_id, tuple(self.info['velocity']))
         for neighbor_info in self.neighbors.values():
-            n_id = sim.addAgent(tuple(neighbor_info['position']))
-            sim.setAgentVelocity(n_id, tuple(neighbor_info['velocity']))
-            sim.setAgentPrefVelocity(n_id, (0.0, 0.0))
+            nb_pos = tuple(neighbor_info['position'])
+            nb_vel = tuple(neighbor_info['velocity'])
+            n_id = sim.addAgent(nb_pos)
+            sim.setAgentVelocity(n_id, nb_vel)
+            # give neighbors their current velocity as preferred so ORCA predicts their motion
+            sim.setAgentPrefVelocity(n_id, nb_vel)
 
         pref_speed = min(NodConfig.kin.V_NOMINAL, dist * 2.0)
         pref_vel   = (diff / dist) * pref_speed
@@ -358,7 +361,11 @@ class Turtlebot:
         orca_vel = sim.getAgentVelocity(ego_id)
 
         v_lin = float(np.clip(math.hypot(orca_vel[0], orca_vel[1]), 0.0, NodConfig.kin.V_MAX))
-        desired_heading = math.atan2(diff[1], diff[0])
+        # steer toward ORCA output direction, not raw goal direction
+        if v_lin > EPS:
+            desired_heading = math.atan2(orca_vel[1], orca_vel[0])
+        else:
+            desired_heading = math.atan2(diff[1], diff[0])
         heading = self.info['heading']
         heading_error = math.atan2(math.sin(desired_heading - heading),
                                    math.cos(desired_heading - heading))
@@ -507,7 +514,24 @@ if __name__ == '__main__':
         os.kill(os.getpid(), signal.SIGTSTP)
     signal.signal(signal.SIGTSTP, handle_sigtstp)
 
-    time.sleep(10)
+    time.sleep(3)
+
+    # Synchronize start: publish ready and wait for all active robots
+    ready_pub = rospy.Publisher('/ready', String, queue_size=10, latch=True)
+    ready_robots = set()
+
+    def _ready_cb(msg):
+        ready_robots.add(msg.data)
+    rospy.Subscriber('/ready', String, _ready_cb)
+
+    time.sleep(1)  # allow subscriber to connect
+    ready_pub.publish(String(data=tb.robot_name))
+    rospy.loginfo(f"{tb.robot_name} ready, waiting for: {ACTIVE_ROBOTS - {tb.robot_name}}")
+
+    while not rospy.is_shutdown() and not ACTIVE_ROBOTS.issubset(ready_robots):
+        time.sleep(0.1)
+    rospy.loginfo(f"{tb.robot_name} all robots ready, starting")
+
     if tb.robot_name in ROGUE_AGENTS:
         time.sleep(5)
 
