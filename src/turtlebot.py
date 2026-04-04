@@ -383,7 +383,7 @@ class Turtlebot:
 
 
         ego_pos = self.info['position']
-        if (abs(ego_pos[0]) > 2.85 or ego_pos[1] > 3.2 or ego_pos[1] < -2.85):
+        if (abs(ego_pos[0]) > 2.85 or ego_pos[1] > 3.2 or ego_pos[1] < -2.0):
             # print(f"{self.robot_name} BOUNDARY STOP at pos={[round(v,3) for v in ego_pos]}")
             self.move(0, 0)
             return
@@ -533,7 +533,10 @@ if __name__ == '__main__':
     rospy.loginfo(f"{tb.robot_name} all robots ready, starting")
 
     if tb.robot_name in ROGUE_AGENTS:
-        time.sleep(5)
+        rogue_delay = 5.0
+        rogue_start = time.time()
+        while time.time() - rogue_start < rogue_delay:
+            time.sleep(0.1)
 
     try:
         while not rospy.is_shutdown():

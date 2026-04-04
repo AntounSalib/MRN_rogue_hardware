@@ -21,7 +21,7 @@ def get_agent_type(name):
 
 
 TRIAL_ID = "4_agents_0_humans_2_rogue"
-TRIAL_SEED = "nod_cooperation_test_3"
+TRIAL_SEED = "nod_cooperation_test_4"
 
 RESET_TO_START = False
 START_POSITIONS = {

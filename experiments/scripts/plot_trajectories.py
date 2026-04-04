@@ -188,7 +188,7 @@ anim = FuncAnimation(fig2, update, frames=N_FRAMES, init_func=init,
 
 plt.tight_layout()
 anim_path = os.path.join(plot_dir, "trajectories_animated.gif")
-anim.save(anim_path, writer="pillow", fps=24)
+anim.save(anim_path, writer="pillow", fps=12)
 print(f"Saved: {anim_path}")
 
 # ── tb6 cooperation with tb1 and tb3 ──────────────────────────────────────────
@@ -200,7 +200,7 @@ if "tb6" in robot_data:
     ax3.set_xlabel("time (s)")
     ax3.set_ylabel("cooperation")
     ax3.set_title(f"tb6 Cooperation\n{trial_name}")
-    ax3.set_ylim(-0.05, 1.05)
+    ax3.set_ylim(-1.05, 1.05)
     ax3.grid(True, linestyle="--", alpha=0.4)
 
     for target, color in [("tb1", "tab:blue"), ("tb3", "tab:orange")]:
@@ -228,7 +228,7 @@ if "tb1" in robot_data:
     ax4.set_xlabel("time (s)")
     ax4.set_ylabel("cooperation")
     ax4.set_title(f"tb1 Cooperation → tb2\n{trial_name}")
-    ax4.set_ylim(-0.05, 1.05)
+    ax4.set_ylim(-1.05, 1.05)
     ax4.grid(True, linestyle="--", alpha=0.4)
 
     col = "p_coop_tb2"
