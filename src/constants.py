@@ -4,8 +4,8 @@ ROBOT_NAMES = ("tb1", "tb2", "tb3", "tb4", "tb5", "tb6", "tb7", "tb8", "tb9", "t
 HUMAN_NAMES = {"crnr_x0_y0", "crnr_x0_y1", "crnr_x1_y0", "crnr_x1_y1"}
 ROGUE_AGENTS = {"tb2", "tb6"}
 ROGUE_SPEEDS = {
-    "tb2": 0.35,
-    "tb6": 0.3,
+    "tb2": 0.55,
+    "tb6": 0.28,
 }
 ORCA_AGENTS = {}
 ORCA_DD_AGENTS = {}
@@ -25,14 +25,14 @@ def get_agent_type(name):
 
 
 TRIAL_ID = "4_agents_0_humans_2_rogue"
-TRIAL_SEED = "nod_cooperation_test_12"
+TRIAL_SEED = "nod_cooperation_trial_5"
 
-RESET_TO_START = True
+RESET_TO_START = False
 START_POSITIONS = {
-    "tb1": (2,  0.75,  -3.1416),
-    "tb2": (0.25,  3,  -1.5708),
-    "tb3": (-0.25, -1,  1.5708),
-    "tb6": (-2,  1.25,  0.0),
+    "tb1": (2,  0.8,  -3.1416),
+    "tb2": (0.2,  3,  -1.5708),
+    "tb3": (-0.2, -1,  1.5708),
+    "tb6": (-2,  1.2,  0.0),
 }
 
 

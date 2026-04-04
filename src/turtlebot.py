@@ -516,27 +516,27 @@ if __name__ == '__main__':
 
     time.sleep(3)
 
-    # Synchronize start: publish ready and wait for all active robots
-    ready_pub = rospy.Publisher('/ready', String, queue_size=10, latch=True)
-    ready_robots = set()
-
-    def _ready_cb(msg):
-        ready_robots.add(msg.data)
-    rospy.Subscriber('/ready', String, _ready_cb)
-
-    time.sleep(1)  # allow subscriber to connect
-    ready_pub.publish(String(data=tb.robot_name))
+    # Synchronize start via ROS parameter server (centralized, no pub/sub timing issues)
+    rospy.set_param(f'/ready/{tb.robot_name}', True)
     rospy.loginfo(f"{tb.robot_name} ready, waiting for: {ACTIVE_ROBOTS - {tb.robot_name}}")
 
-    while not rospy.is_shutdown() and not ACTIVE_ROBOTS.issubset(ready_robots):
+    while not rospy.is_shutdown():
+        if all(rospy.get_param(f'/ready/{r}', False) for r in ACTIVE_ROBOTS):
+            break
         time.sleep(0.1)
+
+    # First robot to clear barrier sets the common start time
+    if not rospy.has_param('/start_time'):
+        rospy.set_param('/start_time', time.time())
+    start_time = rospy.get_param('/start_time')
     rospy.loginfo(f"{tb.robot_name} all robots ready, starting")
 
     if tb.robot_name in ROGUE_AGENTS:
-        rogue_delay = 8
-        rogue_start = time.time()
-        while time.time() - rogue_start < rogue_delay:
-            time.sleep(0.1)
+        rogue_delay = 0
+        wake_time = start_time + rogue_delay
+        sleep_remaining = wake_time - time.time()
+        if sleep_remaining > 0:
+            time.sleep(sleep_remaining)
 
     try:
         while not rospy.is_shutdown():
