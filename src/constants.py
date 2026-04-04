@@ -20,7 +20,7 @@ def get_agent_type(name):
 
 
 TRIAL_ID = "4_agents_0_humans_2_rogue"
-TRIAL_SEED = "nod_cooperation_trial"
+TRIAL_SEED = "nod_cooperation_test_7"
 
 
 EPS = 1e-5
@@ -43,7 +43,7 @@ class NodConfig:
         OPINION_DECAY = 1
         ATTENTION_DECAY = 1
         TAU_Z = 0.5
-        TAU_COOPERATION = 1
+        TAU_COOPERATION = 0.5
         TIMING_TAU_U_RELAX = TAU_Z
         TAU_Z_RELAX = TAU_Z
         ITERATIONS_OD = 50

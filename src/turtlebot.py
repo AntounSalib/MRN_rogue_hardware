@@ -315,9 +315,24 @@ class Turtlebot:
         sens_neighbors = sensed_neighbors(self.info, self.neighbors)
 
         if self.robot_name in ROGUE_AGENTS:
+            if self.goal_heading is None:
+                self._init_goal_heading()
             self.target_speed = NodConfig.kin.V_ROGUE
             self.data_saver.save_data(self.info, self.neighbors, sens_neighbors, self.nod_controller, self.target_speed)
-            self.move(self.target_speed, 0)
+            heading = self.info['heading']
+            heading_error = math.atan2(math.sin(self.goal_heading - heading),
+                                       math.cos(self.goal_heading - heading))
+            self.heading_error_integral += heading_error * 0.1
+            self.heading_error_integral = math.copysign(
+                min(abs(self.heading_error_integral), NodConfig.mpc_cbf.OMEGA_MAX / NodConfig.kin.KAPPA_ANG_I),
+                self.heading_error_integral)
+            ang_vel = math.copysign(
+                min(abs(NodConfig.kin.KAPPA_ANG * heading_error
+                        + NodConfig.kin.KAPPA_ANG_I * self.heading_error_integral),
+                    NodConfig.mpc_cbf.OMEGA_MAX),
+                heading_error + NodConfig.kin.KAPPA_ANG_I / NodConfig.kin.KAPPA_ANG * self.heading_error_integral)
+            self.move(self.target_speed, ang_vel)
+            self.rate.sleep()
             return
 
         if self.robot_name in ORCA_AGENTS:
@@ -424,6 +439,8 @@ if __name__ == '__main__':
     signal.signal(signal.SIGTSTP, handle_sigtstp)
 
     time.sleep(10)
+    if tb.robot_name in ROGUE_AGENTS:
+        time.sleep(5)
 
     try:
         while not rospy.is_shutdown():
