@@ -31,9 +31,6 @@ class NodController:
 
         sens_neighbors = sensed_neighbors(ego_info, neighbors_dict)
 
-        if NodConfig.cooperation.COOPERATION_LAYER_ON:
-            self._update_cooperation(ego_info, neighbors_dict, sens_neighbors)
-
         Pis, Gis, Uis = self._compute_pressure_and_gates(ego_info, neighbors_dict, sens_neighbors)
 
         a_sum,sumP = self._aggregate(Pis, Gis, Uis)
@@ -58,92 +55,79 @@ class NodController:
       
         return v_tar
     
-    def _update_cooperation(self, ego_info: dict, neighbors_dict: dict, sensed_neighbors: set) -> None:
+    def _update_cooperation_for_neighbor(self, ego_info: dict, neighbor_info: dict, neighbor: str) -> None:
+        time_step = 0.1
 
-        for neighbor in sensed_neighbors:
-            neighbor_info = neighbors_dict[neighbor]
-            time_step = 0.1
+        # relative vectors
+        vij_vec = np.array(neighbor_info['velocity']) - np.array(ego_info['velocity'])
+        pij = np.array(neighbor_info['position']) - np.array(ego_info['position'])
+        pij_norm = float(np.linalg.norm(pij))
+        pij_norm = max(pij_norm, 1e-6)
+        vij_vec_norm = float(np.linalg.norm(vij_vec))
+        vij_vec_norm = max(vij_vec_norm, 1e-6)
+        theta = np.arccos(max(min(np.dot(vij_vec, pij)/(vij_vec_norm*pij_norm), 1), -1))
 
-            if np.linalg.norm(neighbor_info['velocity']) > 0.05:
-                self.neighbor_ever_moved[neighbor] = True
-            if not self.neighbor_ever_moved[neighbor]:
-                continue
+        safe_ratio = np.clip(D_SAFE / pij_norm, -1.0, 1.0)
+        theta_prime = np.arcsin(safe_ratio)
+        Phi_prime = np.cos(theta_prime)
+        Phi_geom = np.cos(np.pi - theta)
 
-            # relative vectors
-            vij_vec = np.array(neighbor_info['velocity']) - np.array(ego_info['velocity'])
-            pij = np.array(neighbor_info['position']) - np.array(ego_info['position'])
-            pij_norm = float(np.linalg.norm(pij))
-            pij_norm = max(pij_norm, 1e-6)
-            vij_vec_norm = float(np.linalg.norm(vij_vec))
-            vij_vec_norm = max(vij_vec_norm, 1e-6)
-            theta = np.arccos(max(min(np.dot(vij_vec, pij)/(vij_vec_norm*pij_norm), 1), -1))
-            
-            safe_ratio = np.clip(D_SAFE / pij_norm, -1.0, 1.0)
-            theta_prime = np.arcsin(safe_ratio)
-            Phi_prime = np.cos(theta_prime)
-            Phi_geom = np.cos(np.pi - theta)
+        # phi calculations
+        last_Phi = self.previous_pairwise_phi[neighbor]
+        Phi = np.cos(theta)
+        self.previous_pairwise_phi[neighbor] = Phi
+        delta_Phi = Phi - last_Phi
 
+        # neighbor velocity calculations
+        prev_vj = self.previous_vj[neighbor]
+        vj = np.array(neighbor_info['velocity'], dtype=float)
+        self.previous_vj[neighbor] = vj
+        delta_vj = np.linalg.norm(vj) - np.linalg.norm(prev_vj)
 
-            # phi calculations
-            ej = neighbor_info['position'] / np.linalg.norm(neighbor_info['position'])
-            last_Phi = self.previous_pairwise_phi[neighbor]
-            Phi = np.cos(theta)
-            self.previous_pairwise_phi[neighbor] = Phi
-            delta_Phi = Phi - last_Phi
+        pij_hat = pij/pij_norm
+        vij_hat = vij_vec/vij_vec_norm
+        vj_norm = float(np.linalg.norm(vj))
+        vj_unit = vj / max(vj_norm, EPS)
+        e_t = (1 / vij_vec_norm) * (vj_unit - vij_hat * (np.dot(vij_hat, vj)))
 
-            # neighbor velocity calculations 
-            prev_vj = self.previous_vj[neighbor]
-            vj = np.array(neighbor_info['velocity'], dtype=float)
-            self.previous_vj[neighbor] = vj
-            delta_vj = np.linalg.norm(vj) - np.linalg.norm(prev_vj)
+        Phi_dot_vj = np.dot(pij_hat, e_t)
 
-            pij_hat = pij/pij_norm
-            vij_hat = vij_vec/vij_vec_norm
-            vj_norm = float(np.linalg.norm(vj))
-            vj_unit = vj / max(vj_norm, EPS)
-            e_t = (1 / vij_vec_norm) * (vj_unit - vij_hat * (np.dot(vij_hat, vj)))
+        latest_cooperation_score = self.pairwise_cooperation[neighbor]
+        vj_scalar = float(np.linalg.norm(neighbor_info['velocity']))
+        # x = math.tanh(10*vj_scalar)  # old
+        x = float(expit(10*vj_scalar))
+        y = math.tanh(abs(delta_Phi))
+        # delta_vj as acceleration (reference uses aj, not speed difference)
+        dt_coop = time_step
+        # g = math.tanh(1*delta_vj)  # old: speed difference
+        g = math.tanh(1*(delta_vj / max(dt_coop, EPS)))
 
-            Phi_dot_vj = np.dot(pij_hat, e_t)
-            
-            
-            latest_cooperation_score = self.pairwise_cooperation[neighbor]
-            vj_scalar = float(np.linalg.norm(neighbor_info['velocity']))
-            # x = math.tanh(10*vj_scalar)  # old
-            x = float(expit(10*vj_scalar))
-            y = math.tanh(abs(delta_Phi))
-            # delta_vj as acceleration (reference uses aj, not speed difference)
-            dt_coop = time_step
-            # g = math.tanh(1*delta_vj)  # old: speed difference
-            g = math.tanh(1*(delta_vj / max(dt_coop, EPS)))
-            # if abs(delta_Phi) < np.deg2rad(5):   
-            #     (delta_Phi) = -np.deg2rad(50)
-            
-            # bj = x*(delta_vj*(-Phi_dot_vj))/abs(delta_Phi)+(1-x)*((-1*y*delta_Phi)+(1-y)) 
-            bj = abs(g)*g*(math.tanh(10*Phi_dot_vj)) \
-                            + (1-abs(g))* math.tanh(1*(Phi_prime-Phi_geom)) + 1-x
-            
-            _, d_min = tca_and_rmin(ego_info, neighbor_info, False, False)
-            d = 1
-            u_prev = self.pairwise_cooperation_attention[neighbor]
-            cooperation_prev = latest_cooperation_score
+        # bj = x*(delta_vj*(-Phi_dot_vj))/abs(delta_Phi)+(1-x)*((-1*y*delta_Phi)+(1-y))
+        bj = abs(g)*g*(math.tanh(10*Phi_dot_vj)) \
+                        + (1-abs(g))* math.tanh(1*(Phi_prime-Phi_geom)) + 1-x
 
-            def _cooperation_coupled_rhs(_t, y):
-                u_val, score_val = y
-                u_dot = -u_val + expit((D_SAFE - d_min))
-                score_dot = -d * score_val + math.tanh(u_val * score_val + bj)
-                return [u_dot/NodConfig.dynamics.TAU_COOPERATION, score_dot/NodConfig.dynamics.TAU_COOPERATION]
+        _, d_min = tca_and_rmin(ego_info, neighbor_info, False, False)
+        d = 1
+        u_prev = self.pairwise_cooperation_attention[neighbor]
+        cooperation_prev = latest_cooperation_score
 
-            sol = solve_ivp(
-                _cooperation_coupled_rhs,
-                [0.0, float(time_step)],
-                [u_prev, cooperation_prev],
-                rtol=1e-4,
-                atol=1e-4,
-            )
-            u = float(sol.y[0, -1])
-            cooperation_score = float(sol.y[1, -1])
-            self.pairwise_cooperation_attention[neighbor] = u
-            self.pairwise_cooperation[neighbor] = cooperation_score
+        def _cooperation_coupled_rhs(_t, y):
+            u_val, score_val = y
+            u_dot = -u_val + expit((D_SAFE - d_min))
+            score_dot = -d * score_val + math.tanh(u_val * score_val + bj)
+            return [u_dot/NodConfig.dynamics.TAU_COOPERATION, score_dot/NodConfig.dynamics.TAU_COOPERATION]
+
+        sol = solve_ivp(
+            _cooperation_coupled_rhs,
+            [0.0, float(time_step)],
+            [u_prev, cooperation_prev],
+            rtol=1e-4,
+            atol=1e-4,
+        )
+        u = float(sol.y[0, -1])
+        cooperation_score = float(sol.y[1, -1])
+        self.pairwise_cooperation_attention[neighbor] = u
+        self.pairwise_cooperation[neighbor] = cooperation_score
 
     def _compute_pressure_and_gates(self, ego_info: dict, neighbor_dict: dict, conflicting_neighbors: set):
         Pis = []
@@ -171,13 +155,12 @@ class NodController:
             if (ti is None or tj is None or ti_cooperation is None):
                 # print(f"nhbr: {neighbor_info['name']}, NONE")
                 continue
-            if (ti > 40 or tj > 40) and tj != 0:
-                # print(f"nhbr: {neighbor_info['name']}, >40, {ti=}, {tj=}")
-                continue
-       
             # print("still in the loop though")
             t_star, d_min = tca_and_rmin(ego_info, neighbor_info, inside_i, inside_j)
 
+            # update cooperation for this conflicting neighbor only
+            if NodConfig.cooperation.COOPERATION_LAYER_ON:
+                self._update_cooperation_for_neighbor(ego_info, neighbor_info, neighbor)
 
             # compute pressure
             P_time = 1*float(expit(float(NodConfig.pressure.KAPPA_TCA) * (float(NodConfig.pressure.T_COLL) - t_star)))

@@ -188,7 +188,7 @@ anim = FuncAnimation(fig2, update, frames=N_FRAMES, init_func=init,
 
 plt.tight_layout()
 anim_path = os.path.join(plot_dir, "trajectories_animated.gif")
-anim.save(anim_path, writer="pillow", fps=12)
+anim.save(anim_path, writer="pillow", fps=6)
 print(f"Saved: {anim_path}")
 
 # ── tb6 cooperation with tb1 and tb3 ──────────────────────────────────────────

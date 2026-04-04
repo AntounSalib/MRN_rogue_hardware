@@ -1,6 +1,7 @@
 from typing import Optional, Set, Tuple
 from constants import NodConfig, EPS
 import numpy as np
+import math
 
 def sensed_neighbors(ego_info: dict, neighbors_dict: dict) -> Set[str]:
     """
@@ -101,7 +102,11 @@ def solve_ray_intersection(ego_info: dict, neighbor_info: dict) -> Tuple[float, 
     neighbor_vel = np.array(neighbor_info['velocity'])
     pij = neighbor_pos - ego_pos
     ei = ego_vel / (np.linalg.norm(ego_vel) + EPS)
-    ej = neighbor_vel / (np.linalg.norm(neighbor_vel) + EPS)
+    if np.linalg.norm(neighbor_vel) < 0.05 and 'heading' in neighbor_info:
+        h = neighbor_info['heading']
+        ej = np.array([math.cos(h), math.sin(h)])
+    else:
+        ej = neighbor_vel / (np.linalg.norm(neighbor_vel) + EPS)
 
     A = np.array([[ei[0], -ej[0]], [ei[1], -ej[1]]], float)
     det = A[0, 0] * A[1, 1] - A[0, 1] * A[1, 0]

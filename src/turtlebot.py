@@ -16,7 +16,7 @@ from nav_msgs.msg import Odometry
 from tf.transformations import euler_from_quaternion
 from data_saver import RobotDataSaver, ImportsDataSaver
 from neighbors import sensed_neighbors
-from constants import ROBOT_NAMES, EPS, NodConfig, ROGUE_AGENTS, ORCA_AGENTS, ORCA_DD_AGENTS, MPC_CBF_AGENTS, HUMAN_NAMES, D_SAFE, RESET_TO_START, START_POSITIONS, ACTIVE_ROBOTS
+from constants import ROBOT_NAMES, EPS, NodConfig, ROGUE_AGENTS, ROGUE_SPEEDS, ORCA_AGENTS, ORCA_DD_AGENTS, MPC_CBF_AGENTS, HUMAN_NAMES, D_SAFE, RESET_TO_START, START_POSITIONS, ACTIVE_ROBOTS
 from orca_dd_controller import NHORCAController
 from mpc_cbf_controller import MPCCBFController
 import rvo2
@@ -325,7 +325,7 @@ class Turtlebot:
             # Position reached — spin to target heading
             heading_error = math.atan2(math.sin(goal_heading - self.info['heading']),
                                        math.cos(goal_heading - self.info['heading']))
-            if abs(heading_error) < 0.05:
+            if abs(heading_error) < 0.02:
                 self.move(0, 0)
             else:
                 ang_vel = math.copysign(
@@ -383,7 +383,7 @@ class Turtlebot:
 
 
         ego_pos = self.info['position']
-        if (abs(ego_pos[0]) > 2.85 or ego_pos[1] > 3.2 or ego_pos[1] < -2.0):
+        if (abs(ego_pos[0]) > 2.85 or ego_pos[1] > 3.2 or ego_pos[1] < -1.8):
             # print(f"{self.robot_name} BOUNDARY STOP at pos={[round(v,3) for v in ego_pos]}")
             self.move(0, 0)
             return
@@ -393,7 +393,7 @@ class Turtlebot:
         if self.robot_name in ROGUE_AGENTS:
             if self.goal_heading is None:
                 self._init_goal_heading()
-            self.target_speed = NodConfig.kin.V_ROGUE
+            self.target_speed = ROGUE_SPEEDS.get(self.robot_name, NodConfig.kin.V_ROGUE)
             self.data_saver.save_data(self.info, self.neighbors, sens_neighbors, self.nod_controller, self.target_speed)
             heading = self.info['heading']
             heading_error = math.atan2(math.sin(self.goal_heading - heading),
@@ -533,7 +533,7 @@ if __name__ == '__main__':
     rospy.loginfo(f"{tb.robot_name} all robots ready, starting")
 
     if tb.robot_name in ROGUE_AGENTS:
-        rogue_delay = 5.0
+        rogue_delay = 8
         rogue_start = time.time()
         while time.time() - rogue_start < rogue_delay:
             time.sleep(0.1)
