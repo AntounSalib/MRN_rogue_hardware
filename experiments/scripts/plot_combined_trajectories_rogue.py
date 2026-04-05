@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Combined static trajectory plot for all methods in 4_agents_0_humans_0_rogue.
+Combined static trajectory plot for all methods in 4_agents_0_humans_2_rogue.
 Produces a 2x2 grid, one subplot per method.
 """
 
@@ -16,11 +16,10 @@ import matplotlib.ticker as ticker
 import numpy as np
 
 COLOR_ROGUES   = ["#d62728", "#8b0000"]   # bright red, dark red
-COLOR_NORMAL   = ["#1f77b4", "#2ca02c"]  # blue, green (cycled for non-rogues)
+COLOR_NORMAL   = ["#1f77b4", "#2ca02c"]
 
 
 def load_rogue_agents(trial_dir):
-    """Parse ROGUE_AGENTS set from constants_copy.py in the trial folder."""
     path = os.path.join(trial_dir, "constants_copy.py")
     if not os.path.isfile(path):
         return set()
@@ -31,28 +30,29 @@ def load_rogue_agents(trial_dir):
         return set()
     return set(re.findall(r'"(\w+)"', match.group(1)))
 
-SCRIPT_DIR  = os.path.dirname(os.path.abspath(__file__))
-DATA_ROOT   = os.path.join(SCRIPT_DIR, "..", "data")
-PLOTS_ROOT  = os.path.join(SCRIPT_DIR, "..", "plots")
 
-SCENARIO    = "4_agents_0_humans_0_rogue"
+SCRIPT_DIR   = os.path.dirname(os.path.abspath(__file__))
+DATA_ROOT    = os.path.join(SCRIPT_DIR, "..", "data")
+PLOTS_ROOT   = os.path.join(SCRIPT_DIR, "..", "plots")
+
+SCENARIO     = "4_agents_0_humans_2_rogue"
 SCENARIO_DIR = os.path.join(DATA_ROOT, SCENARIO)
 
 TRIAL_LABELS = {
-    "mpc_cbf_trial":        "MPC-CBF",
-    "nh_orca_trial":        "NH-ORCA",
-    "nod_cooperation_trial":"NOD-COOPERATION (ours)",
-    "orca_trial":           "ORCA",
+    "mpc_cbf_trial":           "MPC-CBF",
+    "nh_orca_trial_2":         "NH-ORCA",
+    "nod_cooperation_trial_5": "NOD-COOPERATION (ours)",
+    "orca_trial_2":            "ORCA",
 }
 
-ROBOT_RADIUS = 0.2   # D_SAFE / 2.0 — agent radius from constants.py
-N_GHOST      = 20
-
-MOVE_THRESHOLD = 0.05  # metres from start position to count as moving
+ROBOT_RADIUS   = 0.2
+N_GHOST        = 20
+MOVE_THRESHOLD = 0.05
 
 # Which agent pairs collide in each subplot (flat index → (name1, name2))
 COLLISION_AGENTS = {
-    0: ("tb1", "tb2"),   # MPC-CBF: blue vs orange
+    0: ("tb1", "tb2"),   # MPC-CBF: blue vs bright red
+    3: ("tb1", "tb6"),   # ORCA: blue vs dark red
 }
 
 
@@ -87,8 +87,6 @@ def load_trial(trial_dir):
             continue
         robot_data[robot_name] = df
 
-    # Trim startup stillness: find earliest t when any robot first moves
-    # >MOVE_THRESHOLD from its starting position, drop all rows before that.
     t_start = None
     for df in robot_data.values():
         x0, y0 = df["x"].values[0], df["y"].values[0]
@@ -139,7 +137,6 @@ def draw_trajectories(ax, robot_data, title, rogue_agents=None, collision_times=
                 x = x[:move_start + oob[0] + 1]
                 y = y[:move_start + oob[0] + 1]
 
-        # Fading ghost circles
         t_robot = df["t"].values[:len(x)]
         indices = np.linspace(0, len(x) - 1, N_GHOST, dtype=int)
         last_x, last_y = None, None
@@ -166,10 +163,8 @@ def draw_trajectories(ax, robot_data, title, rogue_agents=None, collision_times=
             ax.plot(x, y, "-", color=color, linewidth=1.5, alpha=0.9,
                     label=robot_name, zorder=3)
 
-        # Start dot
         ax.plot(x[0], y[0], "o", color=color, markersize=4, zorder=5)
 
-        # End: bold circle + X
         ax.add_patch(plt.Circle((x[-1], y[-1]), ROBOT_RADIUS,
                                 color=color, fill=False, linewidth=2.5, zorder=6))
         r = ROBOT_RADIUS * 0.65
@@ -226,8 +221,6 @@ for flat_idx, (ax, trial_name) in enumerate(zip(axes.flat, trial_names)):
     if row == 1:
         ax.set_xlabel("x (m)", fontsize=15)
 
-# Unify axis limits across all subplots and make them square so
-# equal-aspect ratio leaves no padding
 x_mins, x_maxs, y_mins, y_maxs = [], [], [], []
 for ax in axes.flat:
     x_mins.append(ax.get_xlim()[0])
@@ -237,7 +230,7 @@ for ax in axes.flat:
 
 cx = (min(x_mins) + max(x_maxs)) / 2
 cy = (min(y_mins) + max(y_maxs)) / 2
-half = max(max(x_maxs) - min(x_mins), max(y_maxs) - min(y_mins)) / 2 * 1.02  # 2% margin
+half = max(max(x_maxs) - min(x_mins), max(y_maxs) - min(y_mins)) / 2 * 1.02
 
 for ax in axes.flat:
     ax.set_xlim(cx - half, cx + half)
@@ -256,9 +249,11 @@ for flat_idx, (n1, n2) in COLLISION_AGENTS.items():
         ax.plot(cx_coll, cy_coll, "x", color="black", markersize=14,
                 markeredgewidth=2.5, zorder=15)
 
-# Collision annotations: MPC-CBF (idx 0): orange + blue
+# Collision annotations: flat index → colliding agent colors
+# MPC-CBF (idx 0): dark red + blue; ORCA (idx 3): blue + dark red
 COLLISION_PAIRS = {
-    0: ["#ff7f0e", "#1f77b4"],
+    0: ["#1f77b4", "#d62728"],
+    3: ["#1f77b4", "#8b0000"],
 }
 for flat_idx, pair_colors in COLLISION_PAIRS.items():
     ax = list(axes.flat)[flat_idx]
