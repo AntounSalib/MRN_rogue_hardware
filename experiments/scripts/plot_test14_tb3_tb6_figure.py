@@ -123,12 +123,14 @@ COLOR_TB6  = "#d62728"   # red    (ROGUE trajectory)
 COLOR_OPN  = "#ff7f0e"   # orange (opinion)
 
 # Blues colormap range matching the ghost circle shading (light → dark)
-CMAP_BLUES = cm.Greens
+CMAP_BLUES = cm.Blues
+CMAP_OPN   = cm.Purples
 BLUES_NORM = mcolors.Normalize(vmin=0, vmax=t_max)
 
 # ── figure layout ──────────────────────────────────────────────────────────────
-fig = plt.figure(figsize=(7, 10))
-gs  = gridspec.GridSpec(2, 1, figure=fig, height_ratios=[1, 0.4], hspace=0.4)
+fig = plt.figure(figsize=(7, 8))
+gs  = gridspec.GridSpec(2, 1, figure=fig, height_ratios=[1, 0.4], hspace=0.35)
+gs.update(top=0.97, bottom=0.07, left=0.12, right=0.97)
 ax_traj = fig.add_subplot(gs[0])
 ax_sig  = fig.add_subplot(gs[1])
 
@@ -154,7 +156,7 @@ for x, y, t_arr, color, label in [(x3_plot, y3_plot, t3_plot, COLOR_TB3, "tb3 (N
                                      color=color, alpha=alpha, zorder=2))
         last_x, last_y = x[idx], y[idx]
 
-    # trajectory line (faded so animated dot pops)
+    # trajectory line
     ax_traj.plot(x, y, "-", color=color, linewidth=1.8, alpha=0.4, zorder=3)
 
     # start dot
@@ -170,15 +172,20 @@ for x, y, t_arr, color, label in [(x3_plot, y3_plot, t3_plot, COLOR_TB3, "tb3 (N
     ax_traj.plot([x[-1] - r, x[-1] + r], [y[-1] - r, y[-1] + r],
                  color=color, linewidth=2, zorder=7)
 
-    ax_traj.plot([], [], "-", color=color, linewidth=1.8, label=label)
-
 ax_traj.set_aspect("equal")
 ax_traj.autoscale()
 ax_traj.set_xlabel("x (m)", fontsize=11)
 ax_traj.set_ylabel("y (m)", fontsize=11)
-ax_traj.set_title("Trajectories", fontsize=12)
-ax_traj.legend().set_visible(False)
+ax_traj.set_title("")
+ax_traj.tick_params(labelsize=9)
 ax_traj.grid(True, linestyle="--", alpha=0.4)
+
+from matplotlib.lines import Line2D
+from matplotlib.patches import Patch
+ax_traj.legend(
+    handles=[Patch(facecolor=COLOR_TB3, label="NOD-COOPERATION"),
+             Patch(facecolor=COLOR_TB6, label="NON-COOPERATIVE")],
+    loc="lower left", fontsize=9, framealpha=0.85)
 
 dot3, = ax_traj.plot([], [], "o", color=COLOR_TB3, markersize=10, zorder=8)
 dot6, = ax_traj.plot([], [], "o", color=COLOR_TB6, markersize=10, zorder=8)
@@ -198,8 +205,8 @@ if coop_vals is not None:
                         linewidth=1.8, zorder=3)
     lc.set_array(t3_sig[:-1])
     ax_sig.add_collection(lc)
-    ax_sig.plot([], [], "-", color=CMAP_BLUES(0.7), linewidth=1.8,
-                label="tb3 cooperation estimate of tb6")
+    ax_sig.plot([], [], "-", color=CMAP_BLUES(0.8), linewidth=1.8,
+                label="Cooperation Estimate")
 else:
     print("Warning: p_coop_tb6 not found in tb3 data")
 
@@ -207,26 +214,26 @@ if "opinion" in df3_sig.columns:
     opn_vals = df3_sig["opinion"].values
     points_o = np.array([t3_sig_plot, opn_vals]).T.reshape(-1, 1, 2)
     segs_o   = np.concatenate([points_o[:-1], points_o[1:]], axis=1)
-    lc_o = LineCollection(segs_o, cmap=cm.Oranges, norm=BLUES_NORM,
+    lc_o = LineCollection(segs_o, cmap=CMAP_OPN, norm=BLUES_NORM,
                           linewidth=1.8, zorder=3)
     lc_o.set_array(t3_sig[:-1])
     ax_sig.add_collection(lc_o)
-    ax_sig.plot([], [], "-", color=cm.Oranges(0.7), linewidth=1.8,
-                label="tb3 opinion")
+    ax_sig.plot([], [], "-", color=CMAP_OPN(0.7), linewidth=1.8,
+                label="Opinion")
 else:
     print("Warning: opinion not found in tb3 data")
 
-ax_sig.axvline(0, color="gray", linewidth=0.8, linestyle="--", alpha=0.5, zorder=2)
-ax_sig.set_xlabel("time (s)", fontsize=11)
-ax_sig.set_ylabel("value", fontsize=11)
-ax_sig.set_title("tb3 Cooperation Estimate of tb6 & Opinion", fontsize=12)
+ax_sig.axhline(0, color="gray", linewidth=0.7, linestyle="--", alpha=0.5, zorder=2)
+ax_sig.set_xlabel("Time (s)", fontsize=11)
+ax_sig.set_ylabel("Value", fontsize=11)
+ax_sig.set_title("NOD-COOPERATION Agent Opinion and\nCooperation Estimate of NON-COOPERATIVE Agent", fontsize=10)
 ax_sig.set_ylim(-1.1, 1.1)
 ax_sig.set_xlim(0, PLOT_DURATION)
-ax_sig.legend().set_visible(False)
+ax_sig.tick_params(labelsize=9)
+ax_sig.legend(loc="lower left", fontsize=9, framealpha=0.85)
 ax_sig.grid(True, linestyle="--", alpha=0.4)
 
 # ── save static PNG (no time cursor) ──────────────────────────────────────────
-plt.tight_layout()
 static_path = os.path.join(PLOT_DIR, "tb3_tb6_figure.png")
 fig.savefig(static_path, dpi=150)
 print(f"Saved: {static_path}")
