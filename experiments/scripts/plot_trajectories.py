@@ -11,13 +11,30 @@ under data/.  Plots are saved to experiments/plots/<trial_name>/.
 
 import sys
 import os
+import re
 import glob
+import itertools
 import pandas as pd
 import matplotlib.pyplot as plt
 import matplotlib.cm as cm
 import numpy as np
 from matplotlib.collections import LineCollection
 from matplotlib.animation import FuncAnimation
+
+COLOR_ROGUES = ["#d62728", "#8b0000"]   # bright red, dark red
+COLOR_NORMAL = ["#1f77b4", "#2ca02c"]  # blue, green
+
+
+def load_rogue_agents(trial_dir):
+    path = os.path.join(trial_dir, "constants_copy.py")
+    if not os.path.isfile(path):
+        return set()
+    with open(path) as f:
+        content = f.read()
+    match = re.search(r'ROGUE_AGENTS\s*=\s*\{([^}]*)\}', content)
+    if not match:
+        return set()
+    return set(re.findall(r'"(\w+)"', match.group(1)))
 
 # ── locate trial folder ────────────────────────────────────────────────────────
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -59,10 +76,36 @@ for rd in robot_dirs:
 if not robot_data:
     sys.exit("No robot data found.")
 
+# ── trim startup stillness ─────────────────────────────────────────────────────
+# Find earliest time any robot moves >0.05 m from its start position, then
+# discard all data before that time across all robots.
+MOVE_THRESHOLD = 0.05
+t_start = None
+for df in robot_data.values():
+    x0, y0 = df["x"].values[0], df["y"].values[0]
+    dist = np.sqrt((df["x"].values - x0)**2 + (df["y"].values - y0)**2)
+    moving = np.where(dist > MOVE_THRESHOLD)[0]
+    if len(moving) > 0:
+        t_candidate = df["t"].values[moving[0]]
+        if t_start is None or t_candidate < t_start:
+            t_start = t_candidate
+
+if t_start is not None:
+    robot_data = {name: df[df["t"] >= t_start].reset_index(drop=True)
+                  for name, df in robot_data.items()}
+    print(f"Trimmed startup: keeping data from t={t_start:.2f}")
+
 print(f"Loaded robots: {list(robot_data.keys())}")
 
 # ── colour palette ─────────────────────────────────────────────────────────────
-colors = cm.tab10(np.linspace(0, 1, len(robot_data)))
+rogue_agents = load_rogue_agents(trial_dir)
+if rogue_agents:
+    rogue_cycle  = itertools.cycle(COLOR_ROGUES)
+    normal_cycle = itertools.cycle(COLOR_NORMAL)
+    colors = [next(rogue_cycle) if name in rogue_agents else next(normal_cycle)
+              for name in robot_data]
+else:
+    colors = list(cm.tab10(np.linspace(0, 1, len(robot_data))))
 
 # ── centre-of-gravity normalisation (plot only, data files unchanged) ──────────
 x_offset = np.mean([df["x"].values[0] for df in robot_data.values()])
@@ -191,8 +234,19 @@ anim_path = os.path.join(plot_dir, "trajectories_animated.gif")
 anim.save(anim_path, writer="pillow", fps=6)
 print(f"Saved: {anim_path}")
 
+# ── cooperation plots (only for trials with NOD agents) ───────────────────────
+agent_types_path = os.path.join(trial_dir, "agent_types.csv")
+has_nod = False
+if os.path.isfile(agent_types_path):
+    at_df = pd.read_csv(agent_types_path)
+    active = at_df[at_df["robot"].isin(robot_data.keys())]
+    has_nod = bool((active["agent_type"] == "NOD").any())
+
+if not has_nod:
+    print("No NOD agents in this trial — skipping cooperation plots.")
+
 # ── tb6 cooperation with tb1 and tb3 ──────────────────────────────────────────
-if "tb6" in robot_data:
+if has_nod and "tb6" in robot_data:
     df6 = robot_data["tb6"]
     t6  = df6["t"].values - df6["t"].values[0]   # relative time
 
@@ -220,7 +274,7 @@ else:
     print("tb6 data not available, skipping cooperation plot.")
 
 # ── tb1 cooperation with tb2 ───────────────────────────────────────────────────
-if "tb1" in robot_data:
+if has_nod and "tb1" in robot_data:
     df1 = robot_data["tb1"]
     t1  = df1["t"].values - df1["t"].values[0]
 
@@ -247,7 +301,7 @@ else:
     print("tb1 data not available, skipping tb1 cooperation plot.")
 
 # ── tb3 cooperation with tb6 ───────────────────────────────────────────────────
-if "tb3" in robot_data:
+if has_nod and "tb3" in robot_data:
     df3 = robot_data["tb3"]
     t3  = df3["t"].values - df3["t"].values[0]
 
