@@ -73,21 +73,24 @@ def tca_and_rmin(ego_info: dict, neighbor_info: dict, inside_i: bool, inside_j: 
 
     if np.linalg.norm(w) <= EPS: # relative velocity negligible
         # print("EPS Skip")
-        return np.inf, np.sqrt(max(0.0, c))
+        return 0., np.sqrt(max(0.0, c))
 
     # time to closest appraoch
     tca = -b / a 
-    if tca < 0.0:
-        if inside_i or inside_j:
-            t_star = 0.0
-        else:
-            t_star = np.inf
-    else:
-        t_star = tca
+    # if tca < 0.0:
+    #     if inside_i or inside_j:
+    #         t_star = 0.0
+    #     else:
+    #         t_star = np.inf
+    # else:
+    #     t_star = tca
 
-    # distance at closest approach
-    rmin_sq = max(0.0, c - ((b * b) / a))
-    d_star = np.sqrt(rmin_sq)
+    # # distance at closest approach
+    # rmin_sq = max(0.0, c - ((b * b) / a))
+    # d_star = np.sqrt(rmin_sq)
+    t_star = max(0.0, tca)  # only consider future approach
+    r_star = r0 + t_star * w
+    d_star = np.linalg.norm(r_star)
 
     # print(f"robot: {ego_info['name']}, neighbor: {neighbor_info['name']}, t_star: {t_star:.3f}, d_star: {d_star:.3f}")
 

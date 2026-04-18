@@ -2,15 +2,16 @@ import numpy as np
 
 ROBOT_NAMES = ("tb1", "tb2", "tb3", "tb4", "tb5", "tb6", "tb7", "tb8", "tb9", "tb10", "tb11", "tb12")
 HUMAN_NAMES = {"crnr_x0_y0", "crnr_x0_y1", "crnr_x1_y0", "crnr_x1_y1"}
-ROGUE_AGENTS = {"tb2", "tb6"}
+ROGUE_AGENTS = {}
 ROGUE_SPEEDS = {
-    "tb2": 0.55,
-    "tb6": 0.28,
+    "tb2": 0.3,
+    "tb4": 0.28,
+    "tb8": 0.55,
 }
 ORCA_AGENTS = {}
 ORCA_DD_AGENTS = {}
 MPC_CBF_AGENTS = {}
-ACTIVE_ROBOTS = {"tb1", "tb2", "tb3", "tb6"}
+ACTIVE_ROBOTS = {"tb6"}
 
 def get_agent_type(name):
     if name in ROGUE_AGENTS:
@@ -24,15 +25,17 @@ def get_agent_type(name):
     return "NOD"
 
 
-TRIAL_ID = "4_agents_0_humans_2_rogue"
-TRIAL_SEED = "nod_cooperation_trial_5"
+TRIAL_ID = "robot_symposium"
+TRIAL_SEED = "nod_cooperation_trial_1"
 
 RESET_TO_START = False
 START_POSITIONS = {
-    "tb1": (2,  0.8,  -3.1416),
-    "tb2": (0.2,  3,  -1.5708),
-    "tb3": (-0.2, -1,  1.5708),
-    "tb6": (-2,  1.2,  0.0),
+    "tb1": ( 2.6,  0.5,  -3.1416),  # NOD,   from east, heading west
+    "tb9": ( 2.6,  1.2,  -3.1416),  # NOD,   from east, heading west
+    "tb6": (-2.6, -0.5,   0.0),     # ROGUE, from west, heading east
+    "tb3": (-0.5,  2.8,  -1.5708),  # NOD,   from north, heading south
+    "tb2": ( 0.5, -1.5,   1.5708),  # ROGUE, from south, heading north
+    "tb5": ( 1.2, -1.5,   1.5708),  # ROGUE, from south, heading north
 }
 
 
@@ -56,13 +59,13 @@ class NodConfig:
         OPINION_DECAY = 1
         ATTENTION_DECAY = 1
         TAU_Z = 0.5
-        TAU_COOPERATION = 0.1
+        TAU_COOPERATION = 0.05
         TIMING_TAU_U_RELAX = TAU_Z
         TAU_Z_RELAX = TAU_Z
         ITERATIONS_OD = 50
 
     class neighbors:
-        SENSING_RANGE = 15
+        SENSING_RANGE = 20
         R_PRED = 1.5*np.sqrt(2)*D_SAFE # 0.84
         R_OCC = 1.*D_SAFE
 
@@ -77,7 +80,7 @@ class NodConfig:
         V_MAX = 0.5
 
     class cooperation:
-        COOPERATION_LAYER_ON = True
+        COOPERATION_LAYER_ON = False
         COOPERATION_THRESHOLD = 0.0
 
     class orca_dd:

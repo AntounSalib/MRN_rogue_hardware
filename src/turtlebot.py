@@ -35,7 +35,8 @@ class Turtlebot:
         # State variables
         self.prev_time = None
         self.commanded_velocity = 0.0
-        self.goal_heading = None  # set on first ORCA step
+        self.goal_heading = None  # set on first step
+        self.goal_position = None  # set on first step — far boundary in goal direction
         self.heading_error_integral = 0.0
         self.reset_position_reached = False
         self.info = {
@@ -248,11 +249,27 @@ class Turtlebot:
         self.neighbors[human_name] = {"name": human_name, "position": [x, y], "velocity": [vx, vy], "heading": yaw}
 
     def _init_goal_heading(self):
-        x, y = self.info['position']
-        if abs(x) >= abs(y):
-            self.goal_heading = 0.0 if x < 0 else math.pi
+        if self.robot_name in START_POSITIONS:
+            self.goal_heading = START_POSITIONS[self.robot_name][2]
         else:
-            self.goal_heading = -math.pi / 2 if y > 0 else math.pi / 2
+            x, y = self.info['position']
+            if abs(x) >= abs(y):
+                self.goal_heading = 0.0 if x < 0 else math.pi
+            else:
+                self.goal_heading = -math.pi / 2 if y > 0 else math.pi / 2
+        # project from actual current position along goal_heading to the far boundary
+        x, y = self.info['position']
+        dx, dy = math.cos(self.goal_heading), math.sin(self.goal_heading)
+        # find smallest positive t to each boundary: x=±2.85, y=-1.8, y=3.2
+        candidates = []
+        if abs(dx) > EPS:
+            t = (2.85 - x) / dx if dx > 0 else (-2.85 - x) / dx
+            candidates.append(t)
+        if abs(dy) > EPS:
+            t = (3.2 - y) / dy if dy > 0 else (-1.8 - y) / dy
+            candidates.append(t)
+        t_goal = min(t for t in candidates if t > 0)
+        self.goal_position = (x + t_goal * dx, y + t_goal * dy)
 
     def _get_v_commanded(self, v_target):
         v_current = np.linalg.norm(self.info["velocity"])
@@ -387,6 +404,13 @@ class Turtlebot:
             # print(f"{self.robot_name} BOUNDARY STOP at pos={[round(v,3) for v in ego_pos]}")
             self.move(0, 0)
             return
+
+        if self.goal_position is not None:
+            gx, gy = self.goal_position
+            dist_to_goal = math.sqrt((ego_pos[0] - gx)**2 + (ego_pos[1] - gy)**2)
+            if dist_to_goal < 0.2:
+                self.move(0, 0)
+                return
 
         sens_neighbors = sensed_neighbors(self.info, self.neighbors)
 

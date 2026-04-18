@@ -104,7 +104,7 @@ class NodController:
 
         # bj = x*(delta_vj*(-Phi_dot_vj))/abs(delta_Phi)+(1-x)*((-1*y*delta_Phi)+(1-y))
         bj = abs(g)*g*(math.tanh(10*Phi_dot_vj)) \
-                        + (1-abs(g))* math.tanh(1*(Phi_prime-Phi_geom)) + 1-x
+                        + (1-abs(g))* math.tanh(10*(Phi_prime-Phi_geom)) + 1-x
 
         _, d_min = tca_and_rmin(ego_info, neighbor_info, False, False)
         d = 1
@@ -146,9 +146,9 @@ class NodController:
                 # print(f"[NOD] prune ray_none ego={ego_info['name']} neigh={neighbor}")
                 continue
             s, t = ray_sol
-            if (s < 0.0 and abs(s) > NodConfig.neighbors.R_OCC):
-                # print(f"nhbr: {neighbor_info['name']}, not conflicting, {s=}, {t=}")
-                continue
+            # if (s < 0.0 and abs(s) > NodConfig.neighbors.R_OCC):
+            #     # print(f"nhbr: {neighbor_info['name']}, not conflicting, {s=}, {t=}")
+            #     continue
             ti, tj, ti_cooperation, inside_i, inside_j= arrival_times_to_disk(ego_info, neighbor_info)
             # print(f"robot: {ego_info['name']}, neighbor: {neighbor_info['name']}, ti: {ti}, tj: {tj}, ti_rogue: {ti_cooperation}, s: {s}, t: {t}")
 
