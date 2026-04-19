@@ -490,6 +490,10 @@ class Turtlebot:
                 NodConfig.mpc_cbf.OMEGA_MAX),
             heading_error + NodConfig.kin.KAPPA_ANG_I / NodConfig.kin.KAPPA_ANG * self.heading_error_integral)
 
+        # Scale steering by speed: suppress in-place spinning when NOD slows the robot down
+        speed_scale = np.clip(v_command / NodConfig.kin.V_NOMINAL, 0.0, 1.0)
+        ang_vel *= speed_scale
+
         self.move(v_command, ang_vel)
 
         self.rate.sleep()
@@ -565,8 +569,7 @@ if __name__ == '__main__':
     try:
         while not rospy.is_shutdown():
             tb.run()
-        #If we press ctrl + C, the node will stop.
-    except rospy.ROSInterruptException:
+    except (rospy.ROSInterruptException, KeyboardInterrupt):
         pass
     finally:
         tb.tb_stop()

@@ -73,24 +73,24 @@ def tca_and_rmin(ego_info: dict, neighbor_info: dict, inside_i: bool, inside_j: 
 
     if np.linalg.norm(w) <= EPS: # relative velocity negligible
         # print("EPS Skip")
-        return 0., np.sqrt(max(0.0, c))
+        return np.inf, np.sqrt(max(0.0, c))
 
     # time to closest appraoch
     tca = -b / a 
-    # if tca < 0.0:
-    #     if inside_i or inside_j:
-    #         t_star = 0.0
-    #     else:
-    #         t_star = np.inf
-    # else:
-    #     t_star = tca
+    if tca < 0.0:
+        if inside_i or inside_j:
+            t_star = 0.0
+        else:
+            t_star = np.inf
+    else:
+        t_star = tca
 
-    # # distance at closest approach
-    # rmin_sq = max(0.0, c - ((b * b) / a))
-    # d_star = np.sqrt(rmin_sq)
-    t_star = max(0.0, tca)  # only consider future approach
-    r_star = r0 + t_star * w
-    d_star = np.linalg.norm(r_star)
+    # distance at closest approach
+    rmin_sq = max(0.0, c - ((b * b) / a))
+    d_star = np.sqrt(rmin_sq)
+    # t_star = max(0.0, tca)  # only consider future approach
+    # r_star = r0 + t_star * w
+    # d_star = np.linalg.norm(r_star)
 
     # print(f"robot: {ego_info['name']}, neighbor: {neighbor_info['name']}, t_star: {t_star:.3f}, d_star: {d_star:.3f}")
 
@@ -104,7 +104,11 @@ def solve_ray_intersection(ego_info: dict, neighbor_info: dict) -> Tuple[float, 
     neighbor_pos = np.array(neighbor_info['position'])
     neighbor_vel = np.array(neighbor_info['velocity'])
     pij = neighbor_pos - ego_pos
-    ei = ego_vel / (np.linalg.norm(ego_vel) + EPS)
+    if np.linalg.norm(ego_vel) < 0.05 and 'heading' in ego_info:
+        h = ego_info['heading']
+        ei = np.array([math.cos(h), math.sin(h)])
+    else:
+        ei = ego_vel / (np.linalg.norm(ego_vel) + EPS)
     if np.linalg.norm(neighbor_vel) < 0.05 and 'heading' in neighbor_info:
         h = neighbor_info['heading']
         ej = np.array([math.cos(h), math.sin(h)])
@@ -142,17 +146,17 @@ def arrival_times_to_disk(ego_info: dict, neighbor_info: dict) -> float:
         ti_rogue = None
     elif s > r:
         ti = (s - r) / max(vi, EPS)
-        if tj is None: 
-            ti_rogue = ti
-        else:
-            # ti_entry = ti
-            # ti_exit = (s + r*1) / max(vi, EPS)
-            # tj_entry = tj
-            # tj_exit = (tj_entry + r/max(vj, 1e-9))
-            # if (ti_exit < tj_entry) or (tj_exit < ti_entry):
-            #     ti_rogue = ti
-            # else:   
-            ti_rogue = (s + r*1.) / max(vi,EPS)
+        # if tj is None: 
+        #     ti_rogue = ti
+        # else:
+        #     # ti_entry = ti
+        #     # ti_exit = (s + r*1) / max(vi, EPS)
+        #     # tj_entry = tj
+        #     # tj_exit = (tj_entry + r/max(vj, 1e-9))
+        #     # if (ti_exit < tj_entry) or (tj_exit < ti_entry):
+        #     #     ti_rogue = ti
+        #     # else:   
+        ti_rogue = (s + r*1.) / max(vi,EPS)
     else:
         ti = 0.0  # already inside or in [0, r)
         ti_rogue = 0.0

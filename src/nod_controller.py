@@ -5,7 +5,7 @@ from typing import List, Tuple
 from neighbors import conflicting_neighbors, tca_and_rmin, arrival_times_to_disk, sensed_neighbors, solve_ray_intersection
 from scipy.special import expit
 from scipy.integrate import solve_ivp
-from constants import NodConfig, EPS, D_SAFE
+from constants import NodConfig, EPS, D_SAFE, HUMAN_NAMES
 
 class NodController:
     def __init__(self, robot_name: str, time: float):
@@ -146,9 +146,9 @@ class NodController:
                 # print(f"[NOD] prune ray_none ego={ego_info['name']} neigh={neighbor}")
                 continue
             s, t = ray_sol
-            # if (s < 0.0 and abs(s) > NodConfig.neighbors.R_OCC):
-            #     # print(f"nhbr: {neighbor_info['name']}, not conflicting, {s=}, {t=}")
-            #     continue
+            if (s < 0.0 and abs(s) > NodConfig.neighbors.R_OCC):
+                # print(f"nhbr: {neighbor_info['name']}, not conflicting, {s=}, {t=}")
+                continue
             ti, tj, ti_cooperation, inside_i, inside_j= arrival_times_to_disk(ego_info, neighbor_info)
             # print(f"robot: {ego_info['name']}, neighbor: {neighbor_info['name']}, ti: {ti}, tj: {tj}, ti_rogue: {ti_cooperation}, s: {s}, t: {t}")
 
@@ -163,8 +163,8 @@ class NodController:
                 self._update_cooperation_for_neighbor(ego_info, neighbor_info, neighbor)
 
             # compute pressure
-            P_time = 1*float(expit(float(NodConfig.pressure.KAPPA_TCA) * (float(NodConfig.pressure.T_COLL) - t_star)))
-            P_distance = 1*float(expit(float(NodConfig.pressure.KAPPA_DMIN) * (NodConfig.pressure.DMIN_CLEAR - d_min)))
+            P_time = 2*float(expit(float(NodConfig.pressure.KAPPA_TCA) * (float(NodConfig.pressure.T_COLL) - t_star)))
+            P_distance = 2*float(expit(float(NodConfig.pressure.KAPPA_DMIN) * (NodConfig.pressure.DMIN_CLEAR - d_min)))
             P = P_time * P_distance
 
             # compute gate
@@ -207,13 +207,15 @@ class NodController:
         r0 = np.array(neighbor_pos) - np.array(ego_pos)  # relative position
         w = np.array(neighbor_info['velocity'])-np.array(ego_info['velocity'])    # relative velocity
         a = float(np.dot(w, w))
-        if np.sqrt(a) < 0.05:   # relative speed too low to compute geometry reliably
-            conflict_intensity = 0.0
-        else:
-            b = 2*float(np.dot(r0, w))
-            c = float(np.dot(r0, r0)) - 1.*(NodConfig.neighbors.R_PRED)**2
-            # conflict_intensity = 1*expit(1*(b**2/(4*a) - c))
-            conflict_intensity = 1*expit(1*(b**2/(4*max(a, EPS)) - c))
+        b = 2*float(np.dot(r0, w))
+        c = float(np.dot(r0, r0)) - 1.*(NodConfig.neighbors.R_PRED)**2
+        # When w≈0 (both nearly stopped), b≈0 and the formula reduces to
+        # expit(-c) = expit(-(‖r0‖²-R_PRED²)), a position-only conflict check.
+        # max(a, EPS) handles the degenerate division safely.
+        conflict_intensity = 2*expit(1*(b**2/(4*max(a, EPS)) - c))
+
+        if neighbor_info['name'] in HUMAN_NAMES:
+            conflict_intensity = max(conflict_intensity, 1.0)
 
         u_ij = conflict_intensity
         # att_prec_ij = self.pairwise_u[neighbor_info['name']]
@@ -251,7 +253,7 @@ class NodController:
     def _gate_induced_pressure(self, Pis, Gis) -> List[float]:
         gated_Pis = []
         for P, G in zip(Pis, Gis):
-            gated_Pis.append(P * 0.5*(1 - (G) * (NodConfig.pressure.PHI_TILT)))
+            gated_Pis.append(P * 1*(1 - (G) * (NodConfig.pressure.PHI_TILT)))
         
         return gated_Pis
     
@@ -275,8 +277,8 @@ class NodController:
             return self._free_flow(z, u)
 
         u_eff = NodConfig.dynamics.U_0 + NodConfig.dynamics.K_U * (z**2)
-        z_dot = (float(-NodConfig.dynamics.OPINION_DECAY* z + np.tanh(u * a_sum)))/NodConfig.dynamics.TAU_Z
-        u_dot = float(-NodConfig.dynamics.ATTENTION_DECAY * u + u_eff )/NodConfig.dynamics.TIMING_TAU_U_RELAX
+        z_dot = (float(-NodConfig.dynamics.OPINION_DECAY* z + np.tanh(u_eff * a_sum)))/NodConfig.dynamics.TAU_Z
+        u_dot = 0.0#float(-NodConfig.dynamics.ATTENTION_DECAY * u + u_eff )/NodConfig.dynamics.TIMING_TAU_U_RELAX
         
         return z_dot, u_dot, u_eff
     
