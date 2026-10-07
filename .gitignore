@@ -4,8 +4,5 @@ __pycache__/
 *.pyo
 *.pyd
 
-# Experiment data
-experiments/data/
-
 # macOS
 .DS_Store
