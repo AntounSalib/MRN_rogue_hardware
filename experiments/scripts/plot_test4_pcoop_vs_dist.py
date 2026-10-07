@@ -1,4 +1,5 @@
 import pandas as pd
+from plot_data import read_plot_csv
 import numpy as np
 import matplotlib.pyplot as plt
 from pathlib import Path
@@ -17,7 +18,7 @@ def n(s):
 
 dfs = {}
 for r in NOD:
-    df = pd.read_csv(DATA_DIR / r / f"{r}_data.csv")
+    df = read_plot_csv(DATA_DIR / r / f"{r}_data.csv")
     df["t"] = n(df["t"]) - n(df["t"])[0]
     dfs[r] = df
 

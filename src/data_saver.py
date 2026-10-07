@@ -14,6 +14,8 @@ from tf.transformations import euler_from_quaternion
 import os
 import csv
 import shutil
+import math
+import tempfile
 import numpy as np
 
 
@@ -124,22 +126,46 @@ class RobotDataSaver:
         self._init_files()
 
     def _init_files(self):
-        """Create headers for file if not present."""
-        if not os.path.exists(self.file_path):
-            headers = ["t", "x", "y", "heading", "opinion", "attention", "target_speed"]
-            for r in self.other_robots:
-                headers.extend([
-                    f"p_att_{r}",
-                    f"p_coop_{r}",
-                    f"p_coop_att_{r}",
-                    f"x_{r}",
-                    f"y_{r}",
-                    f"vx_{r}",
-                    f"vy_{r}"
-                ])
-            
+        """Create the CSV or add current_speed to legacy logs without shifting columns."""
+        headers = ["t", "x", "y", "heading", "opinion", "attention", "target_speed"]
+        for r in self.other_robots:
+            headers.extend([
+                f"p_att_{r}", f"p_coop_{r}", f"p_coop_att_{r}",
+                f"x_{r}", f"y_{r}", f"vx_{r}", f"vy_{r}"
+            ])
+        legacy_headers = headers.copy()
+        headers.append("current_speed")
+
+        if not os.path.exists(self.file_path) or os.path.getsize(self.file_path) == 0:
             with open(self.file_path, "w", newline="") as f:
                 csv.writer(f).writerow(headers)
+            return
+
+        temporary_path = None
+        try:
+            with open(self.file_path, newline="") as source:
+                reader = csv.reader(source)
+                existing_headers = next(reader)
+                if existing_headers == headers:
+                    return
+                if existing_headers != legacy_headers:
+                    raise ValueError("Unexpected CSV columns in " + self.file_path)
+                with tempfile.NamedTemporaryFile(mode="w", newline="", dir=self.folder,
+                                                 prefix=".speed_upgrade_", delete=False) as dest:
+                    temporary_path = dest.name
+                    writer = csv.writer(dest)
+                    writer.writerow(headers)
+                    for row in reader:
+                        if not row:
+                            continue
+                        if len(row) != len(legacy_headers):
+                            raise ValueError("Incomplete CSV row in " + self.file_path)
+                        # Historical measured speed was not recorded.
+                        writer.writerow(row + [np.nan])
+            os.replace(temporary_path, self.file_path)
+        finally:
+            if temporary_path is not None and os.path.exists(temporary_path):
+                os.unlink(temporary_path)
 
     def save_data(self, ego_info, neighbors, sensed_neighbors, nod_controller, target_speed):
 
@@ -148,6 +174,7 @@ class RobotDataSaver:
         # Robot Info
         x, y = ego_info["position"]
         heading = ego_info["heading"]
+        current_speed = math.hypot(*ego_info["velocity"])
         
         # Nod Controller Info
         z = nod_controller.z
@@ -173,6 +200,7 @@ class RobotDataSaver:
             else:
                 row.extend([np.nan, np.nan, np.nan, np.nan, np.nan, np.nan, np.nan])
 
+        row.append(current_speed)
         with open(self.file_path, "a", newline="") as f:
             csv.writer(f).writerow(row)
         

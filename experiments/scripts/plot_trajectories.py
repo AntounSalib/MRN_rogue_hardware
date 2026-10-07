@@ -15,6 +15,7 @@ import re
 import glob
 import itertools
 import pandas as pd
+from plot_data import read_plot_csv
 import matplotlib.pyplot as plt
 import matplotlib.cm as cm
 import numpy as np
@@ -67,7 +68,7 @@ for rd in robot_dirs:
     csv_path = os.path.join(rd, f"{robot_name}_data.csv")
     if not os.path.isfile(csv_path):
         continue
-    df = pd.read_csv(csv_path)
+    df = read_plot_csv(csv_path)
     if len(df) < 2:
         print(f"  Skipping {robot_name}: only {len(df)} row(s)")
         continue
@@ -238,7 +239,7 @@ print(f"Saved: {anim_path}")
 agent_types_path = os.path.join(trial_dir, "agent_types.csv")
 has_nod = False
 if os.path.isfile(agent_types_path):
-    at_df = pd.read_csv(agent_types_path)
+    at_df = read_plot_csv(agent_types_path)
     active = at_df[at_df["robot"].isin(robot_data.keys())]
     has_nod = bool((active["agent_type"] == "NOD").any())
 

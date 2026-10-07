@@ -9,6 +9,7 @@ import re
 import glob
 import itertools
 import pandas as pd
+from plot_data import read_plot_csv
 import matplotlib.pyplot as plt
 from matplotlib.lines import Line2D
 import matplotlib.cm as cm
@@ -82,7 +83,7 @@ def load_trial(trial_dir):
         csv_path = os.path.join(rd, f"{robot_name}_data.csv")
         if not os.path.isfile(csv_path):
             continue
-        df = pd.read_csv(csv_path)
+        df = read_plot_csv(csv_path)
         if len(df) < 2:
             continue
         robot_data[robot_name] = df

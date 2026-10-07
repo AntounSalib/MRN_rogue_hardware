@@ -1,0 +1,19 @@
+<launch>
+  <!-- Position all robots, then start the experiment automatically. -->
+  <arg name="scenario" default="orthogonal" />
+  <!-- Clear synchronization state for each new experiment. -->
+  <rosparam command="delete" param="/ready" />
+  <rosparam command="delete" param="/start_time" />
+  <rosparam command="delete" param="/hardware_experiment/positioned" />
+  <rosparam command="delete" param="/hardware_experiment/started" />
+  <include file="$(find MRN_rogue_hardware)/launch/launch_selected.launch">
+    <arg name="scenario" value="$(arg scenario)" />
+    <arg name="sim" value="0" />
+    <arg name="tb1" value="true" />
+    <arg name="tb9" value="true" />
+    <arg name="tb6" value="true" />
+    <arg name="tb3" value="true" />
+    <arg name="tb2" value="true" />
+    <arg name="tb5" value="true" />
+  </include>
+</launch>

@@ -16,6 +16,7 @@ Usage:
 import os
 import numpy as np
 import pandas as pd
+from plot_data import read_plot_csv
 import matplotlib.pyplot as plt
 import matplotlib.gridspec as gridspec
 from matplotlib.widgets import Slider
@@ -26,8 +27,8 @@ TRIAL_DIR  = os.path.join(SCRIPT_DIR, "..", "data",
                            "4_agents_0_humans_2_rogue", "nod_cooperation_test_14")
 
 # ── load data ──────────────────────────────────────────────────────────────────
-df3 = pd.read_csv(os.path.join(TRIAL_DIR, "tb3", "tb3_data.csv"))
-df6 = pd.read_csv(os.path.join(TRIAL_DIR, "tb6", "tb6_data.csv"))
+df3 = read_plot_csv(os.path.join(TRIAL_DIR, "tb3", "tb3_data.csv"))
+df6 = read_plot_csv(os.path.join(TRIAL_DIR, "tb6", "tb6_data.csv"))
 
 # ── trim startup stillness ─────────────────────────────────────────────────────
 MOVE_THRESHOLD = 0.05

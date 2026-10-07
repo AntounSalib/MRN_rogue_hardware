@@ -19,6 +19,7 @@ from neighbors import sensed_neighbors
 from constants import ROBOT_NAMES, EPS, NodConfig, ROGUE_AGENTS, ROGUE_SPEEDS, ORCA_AGENTS, ORCA_DD_AGENTS, MPC_CBF_AGENTS, HUMAN_NAMES, D_SAFE, RESET_TO_START, START_POSITIONS, ACTIVE_ROBOTS
 from orca_dd_controller import NHORCAController
 from mpc_cbf_controller import MPCCBFController
+from scenarios import get_scenario, FIELD_BOUNDS, GOAL_TOLERANCE, path_tracking_target
 import rvo2
 
 from gazebo_msgs.srv import GetModelState, GetModelStateRequest, SetModelState
@@ -57,6 +58,29 @@ class Turtlebot:
             self.pos = None
 
         rospy.init_node('tb_controller', anonymous=True)
+
+        self.start_positions = START_POSITIONS
+        self.active_robots = ACTIVE_ROBOTS
+        self.reset_to_start = RESET_TO_START
+        self.scenario_route = ()
+        self.scenario_preparing = False
+        self.scenario_finished = False
+        self.scenario_waypoint_index = 0
+        self.scenario_path_lookahead = 0.0
+        scenario_name = rospy.get_param('/hardware_experiment/scenario', '')
+        if scenario_name:
+            scenario = get_scenario(scenario_name)
+            if robot_name not in scenario.active_robots:
+                raise ValueError('{} is not in scenario {}'.format(robot_name, scenario_name))
+            self.start_positions = scenario.start_positions
+            self.active_robots = scenario.active_robots
+            self.reset_to_start = False
+            self.scenario_preparing = True
+            rospy.set_param('/hardware_experiment/positioned/' + robot_name, False)
+            self.scenario_route = scenario.waypoints[robot_name] + (scenario.goal_positions[robot_name],)
+            self.scenario_path_lookahead = scenario.path_lookahead
+            rospy.loginfo('{} scenario={} start={} route={}'.format(
+                robot_name, scenario_name, self.start_positions[robot_name], self.scenario_route))
 
         # Setup cmd_vel publisher
         self.rate = rospy.Rate(10)
@@ -99,7 +123,7 @@ class Turtlebot:
                     rospy.Subscriber(topic_name, String, self.neighbor_callback)
 
         # Initialize NodController
-        self.nod_controller = NodController(self.robot_name, time.time())
+        self.nod_controller = NodController(self.robot_name, time.monotonic())
         self.nhorca_controller = NHORCAController() if self.robot_name in ORCA_DD_AGENTS else None
         self.mpc_cbf_controller = MPCCBFController() if self.robot_name in MPC_CBF_AGENTS else None
         self.data_saver = RobotDataSaver(self.robot_name)
@@ -249,8 +273,11 @@ class Turtlebot:
         self.neighbors[human_name] = {"name": human_name, "position": [x, y], "velocity": [vx, vy], "heading": yaw}
 
     def _init_goal_heading(self):
-        if self.robot_name in START_POSITIONS:
-            self.goal_heading = START_POSITIONS[self.robot_name][2]
+        if self.scenario_route:
+            self._update_scenario_goal()
+            return
+        if self.robot_name in self.start_positions:
+            self.goal_heading = self.start_positions[self.robot_name][2]
         else:
             x, y = self.info['position']
             if abs(x) >= abs(y):
@@ -271,6 +298,29 @@ class Turtlebot:
         t_goal = min(t for t in candidates if t > 0)
         self.goal_position = (x + t_goal * dx, y + t_goal * dy)
 
+    def _update_scenario_goal(self):
+        """Advance corners and steer toward the current waypoint or final goal."""
+        x, y = self.info['position']
+        if self.scenario_path_lookahead > 0:
+            full_path = (self.start_positions[self.robot_name][:2],) + self.scenario_route
+            index, target = path_tracking_target((x, y), full_path, self.scenario_waypoint_index,
+                                                self.scenario_path_lookahead)
+            if index != self.scenario_waypoint_index:
+                self.heading_error_integral = 0.0
+            self.scenario_waypoint_index = index
+            self.goal_position = self.scenario_route[index]
+            self.goal_heading = math.atan2(target[1] - y, target[0] - x)
+            return
+        while self.scenario_waypoint_index < len(self.scenario_route) - 1:
+            gx, gy = self.scenario_route[self.scenario_waypoint_index]
+            if math.hypot(gx - x, gy - y) >= 0.2:
+                break
+            self.scenario_waypoint_index += 1
+            self.heading_error_integral = 0.0
+        self.goal_position = self.scenario_route[self.scenario_waypoint_index]
+        gx, gy = self.goal_position
+        self.goal_heading = math.atan2(gy - y, gx - x)
+
     def _get_v_commanded(self, v_target):
         v_current = np.linalg.norm(self.info["velocity"])
 
@@ -278,8 +328,8 @@ class Turtlebot:
             return  NodConfig.kin.KAPPA_V*(v_target - v_val)
         
         
-        # Iterate RK4 updates on the rogueness score until it stabilizes
-        time_step = 0.1
+        # Iterate RK4 updates
+        time_step = self.nod_controller.time_step
         for _ in range(1):
             k1 = _v_dot_rhs(v_current)
             k2 = _v_dot_rhs(v_current + 0.5 * time_step * k1)
@@ -324,12 +374,12 @@ class Turtlebot:
         return sim.getAgentVelocity(ego_id)
 
     def _run_reset(self):
-        if self.robot_name not in START_POSITIONS:
+        if self.robot_name not in self.start_positions:
             self.move(0, 0)
             self.rate.sleep()
             return
 
-        goal_x, goal_y, goal_heading = START_POSITIONS[self.robot_name]
+        goal_x, goal_y, goal_heading = self.start_positions[self.robot_name]
         goal = np.array([goal_x, goal_y])
         pos  = np.array(self.info['position'])
         diff = goal - pos
@@ -392,24 +442,130 @@ class Turtlebot:
         self.move(v_lin, ang_vel)
         self.rate.sleep()
 
-    def run(self):
-        if RESET_TO_START:
+    def _prepare_scenario(self):
+        """Position and align each robot, then release the whole experiment."""
+        # Latch the shared release so one robot leaving its start cannot make
+        # a slower control loop miss the all-positioned condition.
+        if rospy.get_param('/hardware_experiment/started', False):
+            self.scenario_preparing = False
+            self.heading_error_integral = 0.0
+            self.move(0, 0)
+            self.rate.sleep()
+            return
+        # Hardware starts with a placeholder pose; wait for actual Vicon data.
+        if not self.simulation_on and self.prev_time is None:
+            self.move(0, 0)
+            self.rate.sleep()
+            return
+
+        x, y = self.info['position']
+        positioned_key = '/hardware_experiment/positioned/' + self.robot_name
+        # A completed trial leaves robots beyond the experiment stop limits.
+        # Positioning must be allowed to drive back in from those endpoints.
+        sx, sy, yaw = self.start_positions[self.robot_name]
+        distance = math.hypot(sx - x, sy - y)
+        heading_error = math.atan2(math.sin(yaw - self.info['heading']),
+                                   math.cos(yaw - self.info['heading']))
+        # Recheck position while waiting, rather than latching arrival forever.
+        self.reset_position_reached = distance < 0.15
+        positioned = self.reset_position_reached and abs(heading_error) < 0.02
+        rospy.set_param(positioned_key, positioned)
+        if not positioned:
             self._run_reset()
+            return
+
+        self.move(0, 0)
+        if all(rospy.get_param('/hardware_experiment/positioned/' + robot, False)
+               for robot in self.active_robots):
+            self.scenario_preparing = False
+            self.heading_error_integral = 0.0
+            if not rospy.has_param('/start_time'):
+                rospy.set_param('/start_time', time.time())
+            rospy.set_param('/hardware_experiment/started', True)
+            rospy.loginfo('{} all scenario starts reached; running experiment'.format(self.robot_name))
+        self.rate.sleep()
+
+    def _experiment_steering_enabled(self):
+        return NodConfig.kin.ENABLE_DRIFT_CORRECTION or self.scenario_path_lookahead > 0
+
+    def _heading_command(self, dt):
+        if not self._experiment_steering_enabled():
+            self.heading_error_integral = 0.0
+            return 0.0
+        error = math.atan2(math.sin(self.goal_heading - self.info['heading']),
+                           math.cos(self.goal_heading - self.info['heading']))
+        gain_i = NodConfig.kin.KAPPA_ANG_I
+        limit = NodConfig.mpc_cbf.OMEGA_MAX
+        if gain_i > 0:
+            self.heading_error_integral += error * dt
+            self.heading_error_integral = max(-limit / gain_i,
+                                               min(limit / gain_i, self.heading_error_integral))
+        else:
+            self.heading_error_integral = 0.0
+        omega = NodConfig.kin.KAPPA_ANG * error + gain_i * self.heading_error_integral
+        return max(-limit, min(limit, omega))
+
+    def _run_stationary(self, angular_velocity=0.0, relax_decision=True):
+        """Keep recording actual motion after commanding a stop or pivot.
+
+        Terminal stops relax the NOD state using free-flow decay. Temporary
+        pivots preserve it. Measured Vicon velocity can take time to settle.
+        """
+        self.target_speed = 0.0
+        self.move(0, angular_velocity)
+        if relax_decision:
+            self.nod_controller.relax_opinion(time.monotonic())
+        sens_neighbors = sensed_neighbors(self.info, self.neighbors)
+        self.data_saver.save_data(self.info, self.neighbors, sens_neighbors,
+                                  self.nod_controller, self.target_speed)
+        self.rate.sleep()
+
+    def run(self):
+        if self.scenario_preparing:
+            self._prepare_scenario()
+            return
+        if self.reset_to_start:
+            self._run_reset()
+            return
+        if self.scenario_finished:
+            self._run_stationary()
             return
 
 
 
         ego_pos = self.info['position']
-        if (abs(ego_pos[0]) > 2.85 or ego_pos[1] > 3.2 or ego_pos[1] < -1.8):
+        xmin, xmax, ymin, ymax = FIELD_BOUNDS
+        if not (xmin <= ego_pos[0] <= xmax and ymin <= ego_pos[1] <= ymax):
             # print(f"{self.robot_name} BOUNDARY STOP at pos={[round(v,3) for v in ego_pos]}")
-            self.move(0, 0)
+            self._run_stationary()
             return
 
-        if self.goal_position is not None:
+        if self.scenario_route:
+            self._update_scenario_goal()
+
+        if self.scenario_route and self.scenario_waypoint_index == len(self.scenario_route) - 1:
+            gx, gy = self.scenario_route[-1]
+            if math.hypot(ego_pos[0] - gx, ego_pos[1] - gy) < GOAL_TOLERANCE:
+                self.scenario_finished = True
+                self._run_stationary()
+                return
+
+        if self.goal_position is not None and not self.scenario_route:
             gx, gy = self.goal_position
             dist_to_goal = math.sqrt((ego_pos[0] - gx)**2 + (ego_pos[1] - gy)**2)
             if dist_to_goal < 0.2:
-                self.move(0, 0)
+                self._run_stationary()
+                return
+
+        if self.scenario_route and self._experiment_steering_enabled():
+            # Align at corners before driving the next leg; this also handles
+            # a large initial tracking error without cutting across the turn.
+            error = math.atan2(math.sin(self.goal_heading - self.info['heading']),
+                               math.cos(self.goal_heading - self.info['heading']))
+            if abs(error) > math.pi / 4:
+                omega = max(-NodConfig.mpc_cbf.OMEGA_MAX,
+                            min(NodConfig.mpc_cbf.OMEGA_MAX, NodConfig.kin.KAPPA_ANG * error))
+                self._run_stationary(omega, relax_decision=False)
                 return
 
         sens_neighbors = sensed_neighbors(self.info, self.neighbors)
@@ -419,18 +575,7 @@ class Turtlebot:
                 self._init_goal_heading()
             self.target_speed = ROGUE_SPEEDS.get(self.robot_name, NodConfig.kin.V_ROGUE)
             self.data_saver.save_data(self.info, self.neighbors, sens_neighbors, self.nod_controller, self.target_speed)
-            heading = self.info['heading']
-            heading_error = math.atan2(math.sin(self.goal_heading - heading),
-                                       math.cos(self.goal_heading - heading))
-            self.heading_error_integral += heading_error * 0.1
-            self.heading_error_integral = math.copysign(
-                min(abs(self.heading_error_integral), NodConfig.mpc_cbf.OMEGA_MAX / NodConfig.kin.KAPPA_ANG_I),
-                self.heading_error_integral)
-            ang_vel = math.copysign(
-                min(abs(NodConfig.kin.KAPPA_ANG * heading_error
-                        + NodConfig.kin.KAPPA_ANG_I * self.heading_error_integral),
-                    NodConfig.mpc_cbf.OMEGA_MAX),
-                heading_error + NodConfig.kin.KAPPA_ANG_I / NodConfig.kin.KAPPA_ANG * self.heading_error_integral)
+            ang_vel = self._heading_command(0.1)
             self.move(self.target_speed, ang_vel)
             self.rate.sleep()
             return
@@ -472,23 +617,12 @@ class Turtlebot:
         if self.goal_heading is None:
             self._init_goal_heading()
 
-        self.target_speed = self.nod_controller.update_opinion(self.info, self.neighbors, time.time())
+        self.target_speed = self.nod_controller.update_opinion(self.info, self.neighbors, time.monotonic())
         self.data_saver.save_data(self.info, self.neighbors, sens_neighbors, self.nod_controller, self.target_speed)
         # print(f"{self.robot_name} target speed: {self.target_speed:.3f}")
         v_command = self._get_v_commanded(self.target_speed)
 
-        heading = self.info['heading']
-        heading_error = math.atan2(math.sin(self.goal_heading - heading),
-                                   math.cos(self.goal_heading - heading))
-        self.heading_error_integral += heading_error * 0.1  # dt = 0.1s
-        self.heading_error_integral = math.copysign(     # anti-windup clamp
-            min(abs(self.heading_error_integral), NodConfig.mpc_cbf.OMEGA_MAX / NodConfig.kin.KAPPA_ANG_I),
-            self.heading_error_integral)
-        ang_vel = math.copysign(
-            min(abs(NodConfig.kin.KAPPA_ANG * heading_error
-                    + NodConfig.kin.KAPPA_ANG_I * self.heading_error_integral),
-                NodConfig.mpc_cbf.OMEGA_MAX),
-            heading_error + NodConfig.kin.KAPPA_ANG_I / NodConfig.kin.KAPPA_ANG * self.heading_error_integral)
+        ang_vel = self._heading_command(self.nod_controller.time_step)
 
         # Scale steering by speed: suppress in-place spinning when NOD slows the robot down
         speed_scale = np.clip(v_command / NodConfig.kin.V_NOMINAL, 0.0, 1.0)
@@ -546,20 +680,23 @@ if __name__ == '__main__':
 
     # Synchronize start via ROS parameter server (centralized, no pub/sub timing issues)
     rospy.set_param(f'/ready/{tb.robot_name}', True)
-    rospy.loginfo(f"{tb.robot_name} ready, waiting for: {ACTIVE_ROBOTS - {tb.robot_name}}")
+    rospy.loginfo(f"{tb.robot_name} ready, waiting for: {tb.active_robots - {tb.robot_name}}")
 
     while not rospy.is_shutdown():
-        if all(rospy.get_param(f'/ready/{r}', False) for r in ACTIVE_ROBOTS):
+        if all(rospy.get_param(f'/ready/{r}', False) for r in tb.active_robots):
             break
         time.sleep(0.1)
 
-    # First robot to clear barrier sets the common start time
-    if not rospy.has_param('/start_time'):
-        rospy.set_param('/start_time', time.time())
-    start_time = rospy.get_param('/start_time')
-    rospy.loginfo(f"{tb.robot_name} all robots ready, starting")
+    # Scenario trials set their start time only after positioning is complete.
+    if tb.scenario_route:
+        rospy.loginfo(f"{tb.robot_name} all controllers ready, positioning for scenario")
+    else:
+        if not rospy.has_param('/start_time'):
+            rospy.set_param('/start_time', time.time())
+        start_time = rospy.get_param('/start_time')
+        rospy.loginfo(f"{tb.robot_name} all robots ready, starting")
 
-    if tb.robot_name in ROGUE_AGENTS:
+    if tb.robot_name in ROGUE_AGENTS and not tb.scenario_route:
         rogue_delay = 0
         wake_time = start_time + rogue_delay
         sleep_remaining = wake_time - time.time()

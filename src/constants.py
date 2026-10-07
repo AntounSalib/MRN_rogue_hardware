@@ -11,7 +11,8 @@ ROGUE_SPEEDS = {
 ORCA_AGENTS = {}
 ORCA_DD_AGENTS = {}
 MPC_CBF_AGENTS = {}
-ACTIVE_ROBOTS = {"tb1", "tb2", "tb3", "tb5", "tb6", "tb9"}
+ACTIVE_ROBOTS = {"tb2", "tb3", "tb9", "tb1", "tb5", "tb6"}
+# ACTIVE_ROBOTS = {"tb2", "tb3"}
 
 def get_agent_type(name):
     if name in ROGUE_AGENTS:
@@ -25,8 +26,8 @@ def get_agent_type(name):
     return "NOD"
 
 
-TRIAL_ID = "robot_symposium"
-TRIAL_SEED = "agent_stopped_in_path"
+TRIAL_ID = "final_SR"
+TRIAL_SEED = "test"
 
 RESET_TO_START = 0
 # START_POSITIONS = {
@@ -49,24 +50,31 @@ START_POSITIONS = {
 
 
 EPS = 1e-2
-D_SAFE = 0.4
+D_SAFE = 0.38
 
 class NodConfig:
     class pressure:
         T_COLL = 5.
-        KAPPA_SAME = 5.0
+        KAPPA_SAME = 2.0
         KAPPA_TCA = KAPPA_SAME
         KAPPA_DMIN = KAPPA_SAME
-        DMIN_CLEAR = np.sqrt(5)*D_SAFE # 0.84
-        PHI_TILT = 0.05
+        KAPPA_URGENCY = KAPPA_SAME
+        DELTA_T_BUFFER = 0.2
+        TAU_SOFT_URGENCY = 0.1
+        USE_S_T_GATE = False
+        KAPPA_G = 3
+        MIN_SIN_ALPHA = (np.sin(np.deg2rad(30.0)))
+        DMIN_CLEAR = 1.*D_SAFE # 0.84
+        PHI_TILT = 0.1
         TEMP_SM = 0.1
 
     class dynamics:
         U_0 = 2
-        K_U = 0
+        K_U = 2
         K_U_S = 0
         OPINION_DECAY = 1
         ATTENTION_DECAY = 1
+        USE_ATT_DYNAMICS = True
         TAU_Z = 1
         TAU_COOPERATION = 1
         TIMING_TAU_U_RELAX = TAU_Z
@@ -75,22 +83,25 @@ class NodConfig:
 
     class neighbors:
         SENSING_RANGE = 15
-        R_PRED = np.sqrt(5)*D_SAFE # 0.84
+        R_PRED = 1*D_SAFE # 0.84
         R_OCC = 1.*D_SAFE
 
 
     class kin:
-        V_NOMINAL = 0.35
+        V_NOMINAL = 0.2
         V_ROGUE = 0.35
-        KAPPA_Z = 2.0
-        KAPPA_V = 5.0
+        KAPPA_Z = 3.0
+        KAPPA_V = 2.0
+        # Straight NOD/rogue runs: disable heading drift correction.
+        # Positioning and turning-route steering remain active.
+        ENABLE_DRIFT_CORRECTION = False
         KAPPA_ANG = 3.0
         KAPPA_ANG_I = 0.5
         V_MAX = 0.5
 
     class cooperation:
-        COOPERATION_LAYER_ON = True
-        COOPERATION_THRESHOLD = 0.0
+        COOPERATION_LAYER_ON = False
+        COOPERATION_THRESHOLD = 0.6
 
     class orca_dd:
         E = 0.05          # tracking error bound (m)

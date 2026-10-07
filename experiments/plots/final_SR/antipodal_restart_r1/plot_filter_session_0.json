@@ -1,0 +1,65 @@
+{
+  "scope": "source CSVs, filtered separately per session",
+  "robots": {
+    "tb1": {
+      "position_outliers": 0,
+      "speed_outliers": 0,
+      "unfilled_position_samples": 0,
+      "smoothing_half_window_s": 0.75,
+      "speed_median_samples": 9,
+      "decision_median_samples": 5,
+      "stopped_speed_display_threshold": 0.03,
+      "stopped_decision_display_threshold": 0.03
+    },
+    "tb2": {
+      "position_outliers": 0,
+      "speed_outliers": 6,
+      "unfilled_position_samples": 0,
+      "smoothing_half_window_s": 0.75,
+      "speed_median_samples": 9,
+      "decision_median_samples": 5,
+      "stopped_speed_display_threshold": 0.03,
+      "stopped_decision_display_threshold": 0.03
+    },
+    "tb3": {
+      "position_outliers": 0,
+      "speed_outliers": 0,
+      "unfilled_position_samples": 0,
+      "smoothing_half_window_s": 0.75,
+      "speed_median_samples": 9,
+      "decision_median_samples": 5,
+      "stopped_speed_display_threshold": 0.03,
+      "stopped_decision_display_threshold": 0.03
+    },
+    "tb5": {
+      "position_outliers": 1,
+      "speed_outliers": 12,
+      "unfilled_position_samples": 0,
+      "smoothing_half_window_s": 0.75,
+      "speed_median_samples": 9,
+      "decision_median_samples": 5,
+      "stopped_speed_display_threshold": 0.03,
+      "stopped_decision_display_threshold": 0.03
+    },
+    "tb6": {
+      "position_outliers": 0,
+      "speed_outliers": 0,
+      "unfilled_position_samples": 0,
+      "smoothing_half_window_s": 0.75,
+      "speed_median_samples": 9,
+      "decision_median_samples": 5,
+      "stopped_speed_display_threshold": 0.03,
+      "stopped_decision_display_threshold": 0.03
+    },
+    "tb9": {
+      "position_outliers": 0,
+      "speed_outliers": 0,
+      "unfilled_position_samples": 0,
+      "smoothing_half_window_s": 0.75,
+      "speed_median_samples": 9,
+      "decision_median_samples": 5,
+      "stopped_speed_display_threshold": 0.03,
+      "stopped_decision_display_threshold": 0.03
+    }
+  }
+}

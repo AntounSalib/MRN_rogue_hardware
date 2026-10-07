@@ -25,6 +25,7 @@ Outputs:
 import os
 import numpy as np
 import pandas as pd
+from plot_data import read_plot_csv
 import matplotlib.pyplot as plt
 import matplotlib.gridspec as gridspec
 import matplotlib.colors as mcolors
@@ -44,10 +45,10 @@ PLOT_DIR   = os.path.join(SCRIPT_DIR, "..", "plots",
 os.makedirs(PLOT_DIR, exist_ok=True)
 
 # ── load data ──────────────────────────────────────────────────────────────────
-df1 = pd.read_csv(os.path.join(TRIAL_DIR, "tb1", "tb1_data.csv"))
-df2 = pd.read_csv(os.path.join(TRIAL_DIR, "tb2", "tb2_data.csv"))
-df3 = pd.read_csv(os.path.join(TRIAL_DIR, "tb3", "tb3_data.csv"))
-df6 = pd.read_csv(os.path.join(TRIAL_DIR, "tb6", "tb6_data.csv"))
+df1 = read_plot_csv(os.path.join(TRIAL_DIR, "tb1", "tb1_data.csv"))
+df2 = read_plot_csv(os.path.join(TRIAL_DIR, "tb2", "tb2_data.csv"))
+df3 = read_plot_csv(os.path.join(TRIAL_DIR, "tb3", "tb3_data.csv"))
+df6 = read_plot_csv(os.path.join(TRIAL_DIR, "tb6", "tb6_data.csv"))
 
 # ── trim startup stillness ─────────────────────────────────────────────────────
 MOVE_THRESHOLD = 0.05

@@ -12,6 +12,7 @@ class NodController:
         # state variables
         self.robot_name = robot_name
         self.current_time = time
+        self.time_step = 0.0
 
         # nod variables
         self.z = 0
@@ -25,9 +26,40 @@ class NodController:
         self.previous_vj = defaultdict(float)
         self.neighbor_ever_moved = defaultdict(bool)
 
+    @staticmethod
+    def _softmax(x: float, y: float, tau: float) -> float:
+        """Smooth, differentiable approximation of max(x, y) with temperature tau."""
+        tau = max(tau, EPS)
+        M = max(x, y)
+        return M + tau * math.log(math.exp(-(M - x) / tau) + math.exp(-(M - y) / tau))
+
+    def _urgency_from_tstar(self, s: float, t_pt: float, vi: float, vj: float,
+                            a: float, b: float, sin_alpha: float,) -> float:
+
+        r_eff = NodConfig.neighbors.R_OCC / max(abs(sin_alpha), EPS)
+        t_exit_i = (s + r_eff) / max(vi, EPS)
+        t_exit_j = (t_pt + r_eff) / max(vj, EPS)
+
+
+        t_star_raw = self._softmax(0.0, -b / (a + EPS), NodConfig.pressure.TAU_SOFT_URGENCY)
+
+
+
+        U_exit = float(expit(NodConfig.pressure.KAPPA_URGENCY * (t_exit_i - t_star_raw - NodConfig.pressure.DELTA_T_BUFFER))) * float(expit(NodConfig.pressure.KAPPA_URGENCY * (t_exit_j - t_star_raw - NodConfig.pressure.DELTA_T_BUFFER)))
+
+        # margin = (2 * r_eff)/cfg.kin.v_nom  - min(abs(t_exit_j - t_ent_i), abs(t_exit_i - t_ent_j))
+        return U_exit
 
     def update_opinion(self, ego_info: dict, neighbors_dict: dict, current_time: float):
         # print(f"robot: {self.robot_name}, conflicting neighbors: {c_neighbors}")
+
+        # Use elapsed control time, bounding startup waits and long stalls.
+        dt = max(0.0, min(current_time - self.current_time, 0.1))
+        self.current_time = current_time
+        self.time_step = dt
+        if dt == 0.0:
+            return float(np.clip((1.0 + np.tanh(NodConfig.kin.KAPPA_Z * self.z))
+                                 * NodConfig.kin.V_NOMINAL, 0.0, NodConfig.kin.V_MAX))
 
         sens_neighbors = sensed_neighbors(ego_info, neighbors_dict)
 
@@ -36,13 +68,9 @@ class NodController:
         a_sum,sumP = self._aggregate(Pis, Gis, Uis)
 
         # update nod variables
-        dt = current_time - self.current_time 
-        self.current_time = current_time
-        dt = 0.1#min(dt, 0.2)
 
         # for _ in range(n_fast):
-        self.z, self.u = self._integrate_fast(
-        self.z, self.u, a_sum, sumP, dt)
+        self.z, self.u = self._integrate_fast(self.z, self.u, a_sum, sumP, dt)
 
         # compute target velocity
         v0 = NodConfig.kin.V_NOMINAL
@@ -52,11 +80,19 @@ class NodController:
         #     print(f"robot: {self.robot_name}, conf neighbors: {conf_neighbors}, Pis: {Pis}, Gis: {Gis}, Uis: {Uis}, z: {self.z:.3f}, u: {self.u:.3f}, v_tar: {v_tar:.3f}")
         # else:
         #     print(f"robot: {self.robot_name}, conf neighbors: {conf_neighbors}, Pis: {Pis}, Gis: {Gis}, Uis: {Uis}, a_sum: {a_sum:.3f}, z: {self.z:.3f}, u: {self.u:.3f}, v_tar: {v_tar:.3f}")
-      
+
         return v_tar
-    
+
+    def relax_opinion(self, current_time: float):
+        """Apply free-flow decay during a terminal stop, without a speed target."""
+        dt = max(0.0, min(current_time - self.current_time, 0.1))
+        self.current_time = current_time
+        self.time_step = dt
+        self.z, self.u = self._integrate_fast(self.z, self.u, None, None, dt)
+        self.pairwise_u.clear()
+
     def _update_cooperation_for_neighbor(self, ego_info: dict, neighbor_info: dict, neighbor: str) -> None:
-        time_step = 0.1
+        time_step = self.time_step
 
         # relative vectors
         vij_vec = np.array(neighbor_info['velocity']) - np.array(ego_info['velocity'])
@@ -106,7 +142,7 @@ class NodController:
         bj = abs(g)*g*(math.tanh(10*Phi_dot_vj)) \
                         + (1-abs(g))* math.tanh(10*(Phi_prime-Phi_geom)) + 1-x
 
-        _, d_min = tca_and_rmin(ego_info, neighbor_info, False, False)
+        _,_,_, d_min = tca_and_rmin(ego_info, neighbor_info, False, False)
         d = 1
         u_prev = self.pairwise_cooperation_attention[neighbor]
         cooperation_prev = latest_cooperation_score
@@ -138,44 +174,55 @@ class NodController:
             # get neighbor info
             neighbor_info = neighbor_dict[neighbor]
             # print(f"robot: {self.robot_name}, neighbor: {neighbor}, ti: {ti:.3f}, tj: {tj:.3f}, delta_t: {delta_t:.3f}, t_star: {t_star:.3f}, d_min: {d_min:.3f}")
-            
+
 
             # neighbor pruning
             ray_sol = solve_ray_intersection(ego_info, neighbor_info)
             if not ray_sol:
                 # print(f"[NOD] prune ray_none ego={ego_info['name']} neigh={neighbor}")
                 continue
-            s, t = ray_sol
+            s, t, ei, ej = ray_sol
+
             if (s < 0.0 and abs(s) > NodConfig.neighbors.R_OCC):
                 # print(f"nhbr: {neighbor_info['name']}, not conflicting, {s=}, {t=}")
                 continue
-            ti, tj, ti_cooperation, inside_i, inside_j= arrival_times_to_disk(ego_info, neighbor_info)
+
+            # Sine of crossing angle: |ei x ej| (2-D cross product magnitude)
+            sin_alpha = abs(float(ei[0] * ej[1] - ei[1] * ej[0]))
+
+            ti, tj, ti_cooperation, inside_i, inside_j= arrival_times_to_disk(ego_info, neighbor_info, ray_sol)
             # print(f"robot: {ego_info['name']}, neighbor: {neighbor_info['name']}, ti: {ti}, tj: {tj}, ti_rogue: {ti_cooperation}, s: {s}, t: {t}")
 
             if (ti is None or tj is None or ti_cooperation is None):
                 # print(f"nhbr: {neighbor_info['name']}, NONE")
                 continue
             # print("still in the loop though")
-            t_star, d_min = tca_and_rmin(ego_info, neighbor_info, inside_i, inside_j)
+            if ti > 100.0 and tj > 100.0:
+                continue
+            a, b, t_star, d_min = tca_and_rmin(ego_info, neighbor_info, inside_i, inside_j)
 
             # update cooperation for this conflicting neighbor only
             if NodConfig.cooperation.COOPERATION_LAYER_ON:
                 self._update_cooperation_for_neighbor(ego_info, neighbor_info, neighbor)
 
             # compute pressure
-            P_time = 2*float(expit(float(NodConfig.pressure.KAPPA_TCA) * (float(NodConfig.pressure.T_COLL) - t_star)))
-            P_distance = 2*float(expit(float(NodConfig.pressure.KAPPA_DMIN) * (NodConfig.pressure.DMIN_CLEAR - d_min)))
-            P = P_time * P_distance
+            # P_time = 2*float(expit(float(NodConfig.pressure.KAPPA_TCA) * (float(NodConfig.pressure.T_COLL) - t_star)))
+            # P_distance = 2*float(expit(float(NodConfig.pressure.KAPPA_DMIN) * (NodConfig.pressure.DMIN_CLEAR - d_min)))
+            thresh = NodConfig.pressure.DMIN_CLEAR/max(abs(sin_alpha),NodConfig.pressure.MIN_SIN_ALPHA)
+            P_distance = float(expit(float(NodConfig.pressure.KAPPA_DMIN) * (thresh - d_min)))
+            P_urgency = self._urgency_from_tstar(s, t, float(np.linalg.norm(ego_info['velocity'])), float(np.linalg.norm(neighbor_info['velocity'])), a, b, sin_alpha)
+
+            P = P_urgency * P_distance
 
             # compute gate
 
             if NodConfig.cooperation.COOPERATION_LAYER_ON and self.pairwise_cooperation[neighbor] < NodConfig.cooperation.COOPERATION_THRESHOLD:
-                delta_t = ti_cooperation - tj
+                delta_t = tj - ti_cooperation
                 # print(f"robot: {ego_info['name']}, neighbor: {neighbor_info['name']}, cooperation: {self.pairwise_cooperation[neighbor]} using cooperation delta_t: {delta_t}")
             else:
-                delta_t = ti - tj
-            G = self._compute_gate(delta_t)
-            P = self._gate_induced_pressure([P], [G])[0]
+                delta_t = tj - ti
+            G = self._compute_gate(delta_t, s, t, inside_i, inside_j)
+
 
             U = self._compute_pairwise_attention(ego_info, neighbor_info)
 
@@ -198,7 +245,7 @@ class NodController:
 
         # print(f"robot: {self.robot_name}, neighbor infos: {infos}")
         return Pis, Gis, Uis
-    
+
     def _compute_pairwise_attention(self, ego_info, neighbor_info: float) -> float:
         ego_pos = ego_info['position']
 
@@ -222,7 +269,7 @@ class NodController:
 
         # def _pairwise_attn_rhs(att: float) -> float:
         #     return  (-att + u_ij )
-        
+
         # # Iterate RK4 updates on the cooperation score until it stabilizes
         # att_score = float(att_prec_ij)
         # time_step = 0.1
@@ -242,62 +289,81 @@ class NodController:
         self.pairwise_u[neighbor_info['name']] = att_score
         # print(f"ego: {ego_info['name']}, neighbor: {neighbor_info['name']}, cooperation level: {self.pairwise_u[neighbor_info['name']]}")
         return att_score
-    
-    def _compute_gate(self, delta_t: float) -> float:
-        if delta_t >= 0.0:
-            G = -1
-        else:
-            G =  1
+
+    def _compute_gate(self, delta_t: float,
+                      s: float, t: float,
+                      inside_i: bool = False, inside_j: bool = False) -> float:
+        # if delta_t >= 0.0:
+        #     G = -1
+        # else:
+        #     G =  1
+        if NodConfig.pressure.USE_S_T_GATE and inside_i and inside_j:
+            if s >= 0.0 and t >= 0.0:
+                return float(np.sign(t - s))
+            if s < 0.0 and t >= 0.0:
+                return 1.0
+            if s >= 0.0 and t < 0.0:
+                return -1.0
+            return 1.0
+        G = np.tanh(NodConfig.pressure.KAPPA_G * delta_t)
+
         return G
 
     def _gate_induced_pressure(self, Pis, Gis) -> List[float]:
         gated_Pis = []
         for P, G in zip(Pis, Gis):
-            gated_Pis.append(P * 1*(1 - (G) * (NodConfig.pressure.PHI_TILT)))
-        
+            gated_Pis.append(P * (1 - G * (NodConfig.pressure.PHI_TILT) / max(1-P, EPS)))
+
         return gated_Pis
-    
+
     def _aggregate(self, Pis, Gis, Uis) -> float:
         if len(Pis) == 0:
             return None, None
 
         P = np.asarray(Pis, float)
         G = np.asarray(Gis, float)
-        P_abs = abs(P)
+        # Tilt affects attention weights only, not the signed opinion drive.
+        scores = np.asarray(self._gate_induced_pressure(P, G), float)
         # max_idx = int(np.argmax(P_abs))
         # max_sign = -1.0 if P[max_idx] < 0.0 else 1.0
-        w = np.exp((P_abs - np.max(P_abs))/NodConfig.pressure.TEMP_SM)  # avoid overflow
-        w /= (np.sum(w) + 1e-9)  # normalize to sum to 1
+        w = np.exp((scores - np.max(scores))/max(NodConfig.pressure.TEMP_SM, EPS))
+        w /= np.sum(w)
         # a_sum = float(max_sign * np.sum(Uis * (w * G)))
-        a_sum = float(np.sum(Uis * w * G))
+        a_sum = float(np.sum(P * w * G))
         return a_sum, np.sum(P)
-    
-    def _nod_update(self, z, u, a_sum, sumP) -> Tuple[float, float, float]:        
+
+    def _nod_update(self, z, u, a_sum, sumP) -> Tuple[float, float, float]:
         if a_sum is None:
             return self._free_flow(z, u)
 
         u_eff = NodConfig.dynamics.U_0 + NodConfig.dynamics.K_U * (z**2)
-        z_dot = (float(-NodConfig.dynamics.OPINION_DECAY* z + np.tanh(u_eff * a_sum)))/NodConfig.dynamics.TAU_Z
-        u_dot = 0.0#float(-NodConfig.dynamics.ATTENTION_DECAY * u + u_eff )/NodConfig.dynamics.TIMING_TAU_U_RELAX
-        
+        u_active = u if NodConfig.dynamics.USE_ATT_DYNAMICS else u_eff
+        z_dot = (float(-NodConfig.dynamics.OPINION_DECAY* z + np.tanh(u_active * a_sum)))/NodConfig.dynamics.TAU_Z
+        u_dot = (0.0 if not NodConfig.dynamics.USE_ATT_DYNAMICS
+                else float(-NodConfig.dynamics.ATTENTION_DECAY * u + u_eff )/NodConfig.dynamics.TIMING_TAU_U_RELAX)
+
         return z_dot, u_dot, u_eff
-    
+
     def _free_flow(self, z: float, u: float) -> Tuple[float, float, float]:
             # u_eff = 0
             z_dot = float(-NodConfig.dynamics.OPINION_DECAY * z)/NodConfig.dynamics.TAU_Z_RELAX
-            u_dot = float(-NodConfig.dynamics.ATTENTION_DECAY * u)/NodConfig.dynamics.TIMING_TAU_U_RELAX
+            u_dot = (float(-NodConfig.dynamics.ATTENTION_DECAY * u)/NodConfig.dynamics.TIMING_TAU_U_RELAX
+                     if NodConfig.dynamics.USE_ATT_DYNAMICS else 0.0)
             return z_dot, u_dot, 0
 
     def _integrate_fast(self, z0: float, u0: float,
                        a_sum: float, sumP: float, horizon_s: float) -> Tuple[float, float]:
-        
-        last_u_eff = [u0]
+
+        if horizon_s <= 0.0:
+            return float(z0), float(u0)
         def fast_rhs(_t, y):
             dz, du, u_eff = self._nod_update(y[0], y[1], a_sum, sumP)
-            last_u_eff[0] = u_eff
             return [dz, du]
 
         sol = solve_ivp(fast_rhs, [0.0, horizon_s], [z0, u0], rtol=1e-4, atol=1e-4)
+        if not sol.success:
+            raise RuntimeError("NOD integration failed: " + sol.message)
         z_end = float(sol.y[0, -1])
-        u_end = float(last_u_eff[0])
+        u_end = (float(sol.y[1, -1]) if NodConfig.dynamics.USE_ATT_DYNAMICS
+                 else float(self._nod_update(z_end, sol.y[1, -1], a_sum, sumP)[2]))
         return z_end, u_end

@@ -36,13 +36,14 @@ def conflicting_neighbors(ego_info: dict, neighbors_dict: dict) -> Set[str]:
             continue
 
         # ray intersection check
-        if not (solve_ray_intersection(ego_info, neighbor_info)):
+        ray_sol = solve_ray_intersection(ego_info, neighbor_info)
+        if ray_sol is None:
             continue
-        s, t = solve_ray_intersection(ego_info, neighbor_info)
+        s,t,ei,ej = ray_sol
         if (s < 0.0 and abs(s) > NodConfig.neighbors.R_OCC):
             continue
 
-        ti_occ, tj_occ, ti_rogue= arrival_times_to_disk(ego_info, neighbor_info)
+        ti_occ, tj_occ, ti_rogue, _, _ = arrival_times_to_disk(ego_info, neighbor_info, ray_sol)
         # print(f"robot: {ego_info['name']}, neighbor: {name}, ti_occ: {ti_occ}, tj_occ: {tj_occ}, ti_rogue: {ti_rogue}, s: {s}, t: {t}")
 
         if (ti_occ is None or tj_occ is None or ti_rogue is None):
@@ -55,7 +56,7 @@ def conflicting_neighbors(ego_info: dict, neighbors_dict: dict) -> Set[str]:
 
     return conflicting
 
-def tca_and_rmin(ego_info: dict, neighbor_info: dict, inside_i: bool, inside_j: bool) -> Tuple[float, float]:
+def tca_and_rmin(ego_info: dict, neighbor_info: dict, inside_i: bool, inside_j: bool) -> Tuple[float, float, float, float]:
     """
     Compute time to closest approach (t_star) and distance at closest approach (d_star) between ego and neighbor
     """
@@ -71,23 +72,15 @@ def tca_and_rmin(ego_info: dict, neighbor_info: dict, inside_i: bool, inside_j: 
     b = float(np.dot(r0, w))
     c = float(np.dot(r0, r0))
 
-    if np.linalg.norm(w) <= EPS: # relative velocity negligible
+    if a <= EPS: # match the simulation's squared-relative-speed threshold
         # print("EPS Skip")
-        return np.inf, np.sqrt(max(0.0, c))
+        return a, b, 0.0, np.sqrt(max(0.0, c))
 
     # time to closest appraoch
-    tca = -b / a 
-    if tca < 0.0:
-        if inside_i or inside_j:
-            t_star = 0.0
-        else:
-            t_star = np.inf
-    else:
-        t_star = tca
+    t_star = max(0.0, -b / a)
 
     # distance at closest approach
-    rmin_sq = max(0.0, c - ((b * b) / a))
-    d_star = np.sqrt(rmin_sq)
+    d_star = float(np.linalg.norm(r0 + t_star * w))
     # t_star = max(0.0, tca)  # only consider future approach
     # r_star = r0 + t_star * w
     # d_star = np.linalg.norm(r_star)
@@ -95,25 +88,31 @@ def tca_and_rmin(ego_info: dict, neighbor_info: dict, inside_i: bool, inside_j: 
     # print(f"robot: {ego_info['name']}, neighbor: {neighbor_info['name']}, t_star: {t_star:.3f}, d_star: {d_star:.3f}")
 
    
-    return t_star, d_star
+    return a, b, t_star, d_star
 
-def solve_ray_intersection(ego_info: dict, neighbor_info: dict) -> Tuple[float, float]:
-    """Solve s*ei = pij - t*ej. Return (s,t) or None if parallel."""
+def solve_ray_intersection(ego_info: dict, neighbor_info: dict) -> Optional[Tuple[float, float, np.ndarray, np.ndarray]]:
+    """Return metric ray distances and unit directions, or None if parallel."""
     ego_pos = np.array(ego_info['position'])
     ego_vel = np.array(ego_info['velocity'])
     neighbor_pos = np.array(neighbor_info['position'])
     neighbor_vel = np.array(neighbor_info['velocity'])
     pij = neighbor_pos - ego_pos
-    if np.linalg.norm(ego_vel) < 0.05 and 'heading' in ego_info:
+    if 'heading' in ego_info:
         h = ego_info['heading']
         ei = np.array([math.cos(h), math.sin(h)])
     else:
-        ei = ego_vel / (np.linalg.norm(ego_vel) + EPS)
-    if np.linalg.norm(neighbor_vel) < 0.05 and 'heading' in neighbor_info:
+        speed = float(np.linalg.norm(ego_vel))
+        if speed <= 1e-9:
+            return None
+        ei = ego_vel / speed
+    if 'heading' in neighbor_info:
         h = neighbor_info['heading']
         ej = np.array([math.cos(h), math.sin(h)])
     else:
-        ej = neighbor_vel / (np.linalg.norm(neighbor_vel) + EPS)
+        speed = float(np.linalg.norm(neighbor_vel))
+        if speed <= 1e-9:
+            return None
+        ej = neighbor_vel / speed
 
     A = np.array([[ei[0], -ej[0]], [ei[1], -ej[1]]], float)
     det = A[0, 0] * A[1, 1] - A[0, 1] * A[1, 0]
@@ -121,15 +120,20 @@ def solve_ray_intersection(ego_info: dict, neighbor_info: dict) -> Tuple[float, 
         return None
     inv = (1.0 / det) * np.array([[A[1, 1], -A[0, 1]], [-A[1, 0], A[0, 0]]], float)
     s, t = inv @ pij
-    return float(s), float(t)
+    return float(s), float(t), ei, ej
 
-def arrival_times_to_disk(ego_info: dict, neighbor_info: dict) -> float:
-    s, t = solve_ray_intersection(ego_info, neighbor_info)
+def arrival_times_to_disk(ego_info: dict, neighbor_info: dict, ray_sol=None) -> tuple:
+    if ray_sol is None:
+        ray_sol = solve_ray_intersection(ego_info, neighbor_info)
+    if ray_sol is None:
+        return None, None, None, False, False
+    s, t, ei, ej = ray_sol
 
     inside_i, inside_j = False, False
     vi = np.linalg.norm(np.array(ego_info['velocity']))
     vj = np.linalg.norm(np.array(neighbor_info['velocity']))
-    r = NodConfig.neighbors.R_OCC
+    sin_alpha = abs(float(ei[0] * ej[1] - ei[1] * ej[0]))
+    r = NodConfig.neighbors.R_OCC / max(sin_alpha, EPS)
     
     # Neighbor arrival
     if t < 0.0 and abs(t) > r:

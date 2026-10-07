@@ -6,6 +6,8 @@
 
   <!-- Determine if we are running a simulation, or running on hardware -->
   <arg name ="sim" default="0"/>  <!-- running on hardware by default -->
+  <arg name="scenario" default="" />
+  <param name="/hardware_experiment/scenario" value="$(arg scenario)" type="str" />
   <!-- <arg name="run_vicon" default="$(eval not arg('sim'))"/> -->
 
 
